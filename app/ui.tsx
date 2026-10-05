@@ -1,10 +1,12 @@
 'use client';
 import { useEffect,useState,useRef,useCallback } from 'react';
-import Link from 'next/link';
 import { usePathname,useRouter } from 'next/navigation';
 import { Headphones,BookOpen,Play,Pause,Lock,Check,Compass,Library,User,Home,ChevronLeft,Plus,Volume2,RotateCcw,RotateCw,Settings,X,Search,ShieldCheck,Menu } from 'lucide-react';
 import Admin from './admin-ui';
 export type Row=Record<string,any>;
+/* Full document links keep the core catalogue usable even if a client-side
+   navigation bundle is delayed or cached by a browser. */
+function Link({href,children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>){return <a href={href} {...props}>{children}</a>}
 const fallback:Row={id:'disparus',slug:'les-disparus-du-dimanche',title:'Les Disparus du Dimanche',author:'Arnaud Banaken',subtitle:'Roman d’enquête · Suspense · Foi',cover:'/hero.png',synopsis:'Un dimanche matin, Sarah Mitchell disparaît. Son sac et son téléphone sont retrouvés dans un bus. Mais bientôt, d’autres signalements apparaissent. D’autres villes. D’autres pays.\n\nSi c’était réellement l’enlèvement annoncé dans la Bible… pourquoi sont-ils si peu nombreux ?'};
 export async function api(url:string,data?:unknown){const r=await fetch(url,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:undefined);const b:any=await r.json();if(!r.ok)throw new Error(b.error||'Impossible de terminer cette action.');return b;}
 const pathFor=(c:Row)=>`/${c.format==='TEXT'?'lire':c.format==='AUDIO'?'ecouter':'regarder'}/${c.id||c.content_id}`;
