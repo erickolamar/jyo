@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./design.css";
+import "./pdf-reader.css";
 
 export const metadata: Metadata = {
   title: "ARCANUM — Les histoires ont leurs secrets",

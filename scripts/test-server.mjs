@@ -30,5 +30,27 @@ who('reader');r=await content('premium');ok(r.body.unlocked&&r.body.content.text
 sqlite.prepare('UPDATE subscriptions SET ends_at=? WHERE user_id=?').run(Date.now()-1,'reader');ok(!(await content('premium')).body.unlocked,'Expiration de l’abonnement appliquée au serveur');
 who('other');ok((await call('me')).body.progress.length===0,'Isolation de la progression entre comptes');
 who('admin');const upload=await routes.upload.POST(new Request('http://localhost:5173/api/upload',{method:'POST',headers:{Origin:'http://localhost:5173','Content-Type':'audio/mpeg','X-Filename':'test.mp3'},body:new Uint8Array([73,68,51,1,2,3])}));const uploaded=await upload.json();ok(upload.status===200&&files.has(uploaded.id),'Import média réservé et stocké');await call('admin','POST',{action:'content',id:'audio-test',work_id:'disparus',format:'AUDIO',sequence:1,title:'Audio test',access_type:'PREMIUM',media_key:uploaded.id,duration:10,status:'PUBLISHED'});who(null);const denied=await routes['media/[id]'].GET(new Request('http://localhost:5173/api/media/audio-test'),{params:Promise.resolve({id:'audio-test'})});ok(denied.status===403,'Fichier audio complet inaccessible sans droits');
+
+// PDF upload and access use the same durable assets and entitlement checks.
+async function uploadPdf(bytes='%PDF-1.7\nDocument test',mime='application/pdf') {return routes.upload.POST(new Request('http://localhost:5173/api/upload',{method:'POST',headers:{Origin:'http://localhost:5173','Content-Type':mime,'X-Filename':'lecture.pdf'},body:bytes}));}
+async function media(id){return routes['media/[id]'].GET(new Request('http://localhost:5173/api/media/'+id),{params:Promise.resolve({id})});}
+who(null);ok((await uploadPdf()).status===401,'Import PDF anonyme refusé');
+who('reader');ok((await uploadPdf()).status===403,'Import PDF réservé à l’administration');
+who('admin');ok((await uploadPdf('faux document')).status===400,'Fausse signature PDF refusée');
+const pdfUpload=await uploadPdf(),pdfAsset=await pdfUpload.json();ok(pdfUpload.status===200&&files.get(pdfAsset.id).type==='application/pdf','PDF importé et stocké sans conversion');
+const pdfContent={action:'content',id:'pdf-free',work_id:'disparus',format:'TEXT',reading_mode:'PDF',sequence:3,title:'Lecture PDF',access_type:'FREE',media_key:pdfAsset.id,text_content:'',status:'PUBLISHED'};
+ok((await call('admin','POST',pdfContent)).status===200,'Publication PDF sans texte saisi');
+ok((await call('admin','POST',{...pdfContent,id:'wrong-pdf',sequence:4,media_key:uploaded.id})).status===400,'Fichier audio refusé comme lecture PDF');
+ok((await call('admin','POST',{...pdfContent,id:'missing-pdf',sequence:4,media_key:''})).status===400,'PDF requis avant enregistrement du mode PDF');
+who(null);r=await content('pdf-free');ok(r.body.content.reading_mode==='PDF'&&r.body.content.mediaAvailable,'Lecture PDF identifiée sans exposer la clé de stockage');
+const pdfResponse=await media('pdf-free');ok(pdfResponse.status===200&&pdfResponse.headers.get('Content-Type')==='application/pdf'&&await pdfResponse.text()==='%PDF-1.7\nDocument test','Fichier PDF rendu à l’identique avec le bon type');
+who('reader');await call('progress','POST',{contentId:'pdf-free',position:2,percentage:50});ok((await content('pdf-free')).body.position.position===2,'Page PDF sauvegardée pour la reprise');
+who('admin');await call('admin','POST',{...pdfContent,id:'pdf-premium',sequence:4,access_type:'PREMIUM'});
+who(null);ok((await media('pdf-premium')).status===403&&!(await content('pdf-premium')).body.content.mediaAvailable,'PDF premium inaccessible sans abonnement');
+who('admin');ok((await call('admin','POST',{...pdfContent,id:'pdf-preview',sequence:5,access_type:'PREVIEW',preview_key:pdfAsset.id})).status===400,'PDF complet refusé comme son propre extrait');
+const previewAsset=await (await uploadPdf('%PDF-1.7\nExtrait offert')).json();ok((await call('admin','POST',{...pdfContent,id:'pdf-preview',sequence:5,access_type:'PREVIEW',preview_key:previewAsset.id})).status===200,'PDF d’extrait distinct accepté');
+who(null);ok(await (await media('pdf-preview')).text()==='%PDF-1.7\nExtrait offert','Seul le PDF d’extrait est envoyé sans droits');
+sqlite.prepare('UPDATE subscriptions SET ends_at=? WHERE user_id=?').run(Date.now()+86400000,'reader');who('reader');ok(await (await media('pdf-preview')).text()==='%PDF-1.7\nDocument test','Le membre Initié reçoit le PDF complet');
+sqlite.prepare("UPDATE contents SET status='DRAFT' WHERE id='pdf-free'").run();ok((await media('pdf-free')).status===404,'PDF en brouillon inaccessible par son adresse');
 sqlite.prepare("UPDATE contents SET status='DRAFT' WHERE id='premium'").run();ok((await content('premium')).status===404,'Brouillon masqué');sqlite.prepare("UPDATE works SET status='ARCHIVED' WHERE id='disparus'").run();ok((await content('presentation')).status===404,'Œuvre archivée inaccessible');
 console.log(`\n${count} contrôles réussis. Données exclusivement en mémoire, aucun paiement réel.`);
