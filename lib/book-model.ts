@@ -12,3 +12,11 @@ export function validateBook(value:any):BookDocument{
 }
 function asset(v:any){if(v==null||v==='')return undefined;if(typeof v!=='string'||!/^[-\w]{1,100}$/.test(v))throw Error('Référence d’image invalide.');return v;}
 export function bookAssets(doc:BookDocument){return [...new Set(doc.pages.flatMap(p=>[p.background,...p.blocks.map(b=>b.asset)]).filter(Boolean))] as string[];}
+
+export function quoteAnchor(doc:BookDocument,quote:string){
+ const normalize=(s:string)=>s.replace(/\s+/g,' ').trim();const blocks=doc.pages.flatMap(p=>p.blocks).filter(b=>b.type==='text');let joined='',ranges:{block:BookBlock;start:number;end:number}[]=[];
+ for(const block of blocks){if(joined)joined+=' ';const start=joined.length;joined+=normalize(blockText(block));ranges.push({block,start,end:joined.length})}
+ const found=joined.indexOf(normalize(quote));if(found<0)return null;const at=ranges.find(r=>r.end>found);if(!at)return null;
+ const raw=blockText(at.block),local=found-at.start;let n=0,offset=0,space=false,started=false;for(;offset<raw.length;offset++){const ch=raw[offset];if(/\s/.test(ch)){if(!started||space)continue;space=true}else{started=true;space=false}if(n===local)break;n++}
+ return {block_id:at.block.id,offset,exact:true,text_anchor:raw.slice(offset,offset+80)};
+}

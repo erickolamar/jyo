@@ -2,6 +2,29 @@ import {blockText,type BookBlock,type BookDocument,type Run} from '../lib/book-m
 export type Fragment=BookBlock&{offset:number;sourcePage:number};
 export type Leaf={sourcePage:number;blocks:Fragment[];baseSize?:number;fixed?:boolean;original?:BookDocument['pages'][number]};
 export const familyName=(f?:string)=>f==='sans-serif'?'Arial, sans-serif':f==='monospace'?'monospace':'Georgia, serif';
+// Logical pages depend on the document, never the screen or reader font size.
+export function logicalPages(doc:BookDocument,maxChars=1800):Leaf[]{
+ const pages:Leaf[]=[];
+ for(const source of doc.pages){
+  const sizes=source.blocks.flatMap(b=>(b.runs||[]).map(r=>r.size||20)).sort((a,b)=>a-b);
+  const baseSize=doc.origin==='PDF'?(sizes[Math.floor(sizes.length/2)]||20):20;
+  let page:Leaf={sourcePage:source.number,baseSize,blocks:[]},count=0;
+  const flush=()=>{if(page.blocks.length){pages.push(page);page={sourcePage:source.number,baseSize,blocks:[]};count=0}};
+  for(const b of source.blocks){
+   const text=blockText(b);
+   if(doc.origin==='PDF'||b.type==='image'){page.blocks.push({...b,offset:0,sourcePage:source.number});continue}
+   // Keep short paragraphs together; split only paragraphs larger than a page.
+   if(count&&count+text.length>maxChars)flush();
+   let offset=0;
+   while(offset<text.length){let end=Math.min(text.length,offset+maxChars-count);
+    if(end<text.length){const at=text.lastIndexOf(' ',end);if(at>offset)end=at+1;else{const after=text.indexOf(' ',end);end=after<0?text.length:after+1}}
+    page.blocks.push({...b,runs:cutRuns(b.runs||[],offset,end),offset,sourcePage:source.number});count+=end-offset;offset=end;if(offset<text.length)flush();
+   }
+  }
+  if(page.blocks.length)flush();else if(!source.blocks.length)pages.push(page);
+ }
+ return pages.length?pages:[{sourcePage:1,blocks:[]}];
+}
 export function cutRuns(runs:Run[],start:number,end:number){let pos=0;return runs.flatMap(r=>{const a=Math.max(0,start-pos),b=Math.min(r.text.length,end-pos);pos+=r.text.length;return b>a?[{...r,text:r.text.slice(a,b)}]:[]})}
 export function runStyle(r:Run,font:number,family:string,base=20){return {fontWeight:r.bold?'700':'400',fontStyle:r.italic?'italic':'normal',fontFamily:familyName(family==='author'?r.family:family),fontSize:`${font?Math.max(10,(r.size||base)/base*font):r.size||20}px`,color:r.color||'#202020'};}
 export function paginate(doc:BookDocument,width:number,height:number,font:number,family:string,maxChars:number):Leaf[]{
