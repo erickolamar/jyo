@@ -1,2 +1,2 @@
-import Arcanum from './ui';
-export default function Home(){return <Arcanum/>;}
+import Jyo from './jyo-ui';
+export default function Home(){return <Jyo/>;}

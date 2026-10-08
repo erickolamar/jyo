@@ -1,0 +1,6 @@
+import {route,json,identity,sameOrigin,body,db,str,choice} from '@/lib/server';
+import {snapshot,track,published} from '@/lib/jyo';
+import {initialData} from '@/lib/initial';
+export const dynamic='force-dynamic';
+export async function GET(){return route(async()=>{await initialData();const user=await identity();return json(await snapshot(user?.userId));});}
+export async function POST(req:Request){return route(async()=>{sameOrigin(req);const b=await body(req);const user=await identity();if(b.action==='save-work'){const u=await identity(true);const {works}=await published();if(!works.some(w=>w.id===b.work_id))return json({error:'Œuvre indisponible.'},404);if(b.saved)await db().prepare('INSERT OR IGNORE INTO saved_works(user_id,work_id,created_at) VALUES(?,?,?)').bind(u!.userId,b.work_id,Date.now()).run();else await db().prepare('DELETE FROM saved_works WHERE user_id=? AND work_id=?').bind(u!.userId,b.work_id).run();return json({ok:true});}const event=choice(b.event,['work_viewed','content_resumed','paywall_viewed','fragment_opened','fragment_conversion']);const {works}=await published();if(!works.some(w=>w.id===b.work_id))return json({error:'Œuvre indisponible.'},404);const actor=user?.userId||`anonymous:${str(b.anonymous_id,80)}`;await track(event,actor,b.work_id,str(b.content_id,80)||null,{},true);return json({ok:true});});}

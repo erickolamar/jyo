@@ -1,0 +1,3 @@
+import {route,identity,bucket,HttpError} from '@/lib/server';
+import {accessibleContent,can_access} from '@/lib/jyo';
+export async function GET(req:Request,{params}:{params:Promise<{id:string}>}){return route(async()=>{const c=await accessibleContent((await params).id),u=await identity();if(!await can_access(u?.userId,c))throw new HttpError(403,'Accès requis.');if(!c.subtitle_key)throw new HttpError(404,'Sous-titres indisponibles.');const file=await bucket().get(c.subtitle_key);if(!file)throw new HttpError(404,'Sous-titres indisponibles.');return new Response(file.body,{headers:{'Content-Type':'text/vtt; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});});}
