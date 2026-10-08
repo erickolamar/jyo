@@ -1,6 +1,7 @@
 'use client';
 import type {Row} from './ui';
-export const formatName:Row={TEXT:'Lire',PDF:'Lire le PDF',AUDIO:'Écouter',VIDEO:'Regarder'};
+export const formatName:Row={TEXT:'Lire',PDF:'Lire',AUDIO:'Écouter',VIDEO:'Regarder'};
+export const readingKind=(c:Row)=>['TEXT','PDF'].includes(c.format)?'TEXT':c.format;
 export const readerUrl=(c:Row)=>`/${['TEXT','PDF'].includes(c.format)?'read':c.format==='AUDIO'?'listen':'watch'}/${c.id||c.content_id}`;
 export function localRows(userId?:string){try{return JSON.parse(localStorage.getItem('jyo-progress:'+ (userId||'guest'))||'{}') as Record<string,Row>}catch{return {}}}
 export function storePosition(id:string,position:Row,userId?:string){try{const rows=localRows(userId);rows[id]=position;localStorage.setItem('jyo-progress:'+(userId||'guest'),JSON.stringify(rows))}catch{}}
