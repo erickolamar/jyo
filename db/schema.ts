@@ -13,3 +13,5 @@ export const settings=sqliteTable('settings',{key:text('key').primaryKey(),value
 export const assets=sqliteTable('assets',{id:text('id').primaryKey(),filename:text('filename').notNull(),mime:text('mime').notNull(),size:integer('size').notNull(),createdAt:integer('created_at').notNull()});
 
 export * from './jyo-schema';
+
+export * from './reader-schema';

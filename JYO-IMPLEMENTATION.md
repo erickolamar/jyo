@@ -42,3 +42,14 @@ L’onglet Partage règle, contenu par contenu, les fragments publics et l’aut
 ## Vérification
 
 `node scripts/test-server.mjs` exécute les contrôles avec une base et des fichiers en mémoire : aucune donnée de production, aucun paiement réel. Le contrôle TypeScript et la compilation de production complètent ces tests. L’interface du lecteur PDF est vérifiée séparément dans un aperçu local.
+
+
+## Lecteur unifié — octobre 2026
+
+Le lecteur des contenus texte et PDF utilise désormais un document riche commun : pages, blocs, styles et illustrations. L’interface propose une ou deux pages, navigation au clavier et au doigt, recherche, surlignages personnels, reprise, réglages escamotables et plein écran.
+
+Administration → Pages & lecteur permet de composer un texte enrichi, ajouter des images, régler le repère de pagination (1 800 caractères par défaut, de 300 à 8 000), convertir un PDF existant et vérifier le résultat dans le même lecteur. L’import d’un PDF source prépare automatiquement ses pages enrichies. Le PDF original reste conservé ; le téléchargement est désactivé par défaut et configurable. Les autorisations serveur s’appliquent au document, aux images et au téléchargement : un chapitre gratuit ne reçoit pas les pages premium de sa source.
+
+En présentation d’auteur, les PDF gardent leurs coordonnées et leurs pages, avec texte sélectionnable et fond graphique séparé. Modifier la police ou la taille recompose le texte dans des pages ajustées à l’écran, avec sauts conservés entre pages sources ; le nombre de pages peut augmenter. Cette recomposition ne peut conserver simultanément toutes les positions initiales. Les images sont conservées et les polices remplacées par familles proches. Une page numérisée sans couche texte reste une image et exige une transcription pour bénéficier du changement de police. Les textes inclinés et mises en page complexes doivent être vérifiés dans l’aperçu ; aucune promesse de reproduction pixel par pixel.
+
+Migration additive 0002 : reader_documents et reader_annotations ; les médias et tables existants sont préservés. Validation : 102 contrôles serveur en mémoire, contrôle TypeScript, conversion réelle dans le navigateur, navigation, taille, aperçu et composition en gras.

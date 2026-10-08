@@ -1,0 +1,2 @@
+import {admin,bucket,route,HttpError} from '@/lib/server';
+export async function GET(req:Request,{params}:{params:Promise<{id:string}>}){return route(async()=>{await admin();const file=await bucket().get((await params).id);if(!file)throw new HttpError(404,'Fichier introuvable.');const headers=new Headers({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});file.writeHttpMetadata(headers);return new Response(file.body,{headers});});}

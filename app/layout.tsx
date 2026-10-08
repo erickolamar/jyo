@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./design.css";
 import "./pdf-reader.css";
 import "./jyo.css";
+import "./book-reader.css";
 
 export const metadata: Metadata = {
   title: "JYO — Ici, on va plus loin...",

@@ -1,0 +1,3 @@
+import {sqliteTable,text,integer,primaryKey} from 'drizzle-orm/sqlite-core';
+export const readerDocuments=sqliteTable('reader_documents',{owner:text('owner').primaryKey(),bookKey:text('book_key'),charactersPerPage:integer('characters_per_page').notNull().default(1800),pdfDownload:integer('pdf_download').notNull().default(0),updatedAt:integer('updated_at').notNull()});
+export const readerAnnotations=sqliteTable('reader_annotations',{userId:text('user_id').notNull(),contentId:text('content_id').notNull(),annotations:text('annotations').notNull().default('[]'),updatedAt:integer('updated_at').notNull()},t=>[primaryKey({columns:[t.userId,t.contentId]})]);
