@@ -13,7 +13,7 @@ const DB={prepare(sql){let args=[];const p={bind(...a){args=a;return p},async fi
 const files=new Map();const BUCKET={async put(key,buffer,opts){files.set(key,{buffer:typeof buffer==='string'?new TextEncoder().encode(buffer):new Uint8Array(buffer),type:opts.httpMetadata.contentType})},async delete(k){files.delete(k)},async get(k){const f=files.get(k);return f?{body:f.buffer,async json(){return JSON.parse(new TextDecoder().decode(f.buffer))},async arrayBuffer(){return f.buffer.slice().buffer},size:f.buffer.length,httpEtag:'test',writeHttpMetadata(h){h.set('Content-Type',f.type)}}:null}};
 globalThis.testEnv={DB,BUCKET,ADMIN_EMAIL:'admin@example.com'};globalThis.testHeaders=new Headers();
 registerHooks({resolve(specifier,context,next){if(specifier==='next/og')return next('@vercel/og',context);if(specifier==='cloudflare:workers')return {url:'test:workers',shortCircuit:true};if(specifier==='next/headers')return {url:'test:headers',shortCircuit:true};if(specifier==='next/navigation')return {url:'test:navigation',shortCircuit:true};if(specifier.startsWith('@/'))return {url:pathToFileURL(resolve(root,specifier.slice(2)+'.ts')).href,shortCircuit:true};if(specifier.startsWith('.')&&context.parentURL?.endsWith('.ts')){const url=new URL(specifier,context.parentURL);if(existsSync(fileURLToPath(url)+'.ts'))return {url:url.href+'.ts',shortCircuit:true}}return next(specifier,context)},load(url,context,next){if(url==='test:workers')return {format:'module',source:'export const env=globalThis.testEnv',shortCircuit:true};if(url==='test:headers')return {format:'module',source:'export const headers=async()=>globalThis.testHeaders',shortCircuit:true};if(url==='test:navigation')return {format:'module',source:'export function redirect(p){throw new Error(p)}',shortCircuit:true};if(url.endsWith('.ts'))return {format:'module',source:ts.transpileModule(readFileSync(fileURLToPath(url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText,shortCircuit:true};return next(url,context)}});
-const routes={};for(const name of ['catalog','me','admin','progress','payments','upload','content/[id]','media/[id]','jyo','admin/jyo','admin/source/[id]','goals','shares','shares/[slug]','offline','reminders','admin/reader','admin/library','covers/[id]','reader/[id]','download/[id]','admin/reader-pdf/[id]','shares/[slug]/card'])routes[name]=await import(pathToFileURL(resolve(root,'app/api',name,'route.ts')).href);
+const routes={};for(const name of ['activity','reading-stats','admin/activity','catalog','me','admin','progress','payments','upload','content/[id]','media/[id]','jyo','admin/jyo','admin/source/[id]','goals','shares','shares/[slug]','offline','reminders','admin/reader','admin/library','covers/[id]','reader/[id]','download/[id]','admin/reader-pdf/[id]','shares/[slug]/card'])routes[name]=await import(pathToFileURL(resolve(root,'app/api',name,'route.ts')).href);
 let count=0;function ok(condition,message){assert.ok(condition,message);count++;console.log('PASS '+message)}
 function who(id,email=id+'@example.com'){globalThis.testHeaders=id?new Headers({'oai-authenticated-user-id':id,'oai-authenticated-user-email':email}):new Headers()}
 async function call(name,method='GET',data,origin='http://localhost:5173'){const request=new Request('http://localhost:5173/api/'+name,{method,headers:{'Content-Type':'application/json',Origin:origin},...(data?{body:JSON.stringify(data)}:{})});const response=await routes[name][method](request);return {status:response.status,body:await response.json()}}
@@ -179,3 +179,42 @@ ok(!paceCanValidate(2,60,true)&&!paceCanValidate(60,60,false)&&paceCanValidate(6
 const report=sessionReport(.05,.1,{start_progress:0,start_date:0,target_date:100*86400000},8*86400000);
 ok(Math.abs(report.gain-5)<.001&&Math.abs(report.progress-10)<.001&&Math.abs(report.gap-2)<.001,'Bilan : gain de cinq points, dix pour cent lus et deux points d’avance');
 console.log(count+' contrôles réussis au total pour la version 8.');
+
+// v9: statistics do not require a rhythm goal, and backward navigation cannot erase gains.
+who('statistics-reader');await call('me');
+let statSave=await call('progress','POST',{contentId:'presentation',position:40,percentage:40});
+ok(statSave.status===200,'Lecture libre : sauvegarde sans objectif');
+const statsReq=()=>routes['reading-stats'].GET(new Request('http://localhost:5173/api/reading-stats?work_id=disparus'));
+let statsData=await (await statsReq()).json();
+const initialGain=statsData.daily.reduce((n,r)=>n+r.gain,0),initialTotal=statsData.state.canonical_progress;
+ok(initialGain>0&&!statsData.state.goal,'Historique quotidien et niveau actuel disponibles sans rythme');
+await call('progress','POST',{contentId:'presentation',position:40,percentage:40});
+await call('progress','POST',{contentId:'presentation',position:10,percentage:10});
+statsData=await (await statsReq()).json();
+ok(statsData.daily.reduce((n,r)=>n+r.gain,0)===initialGain&&statsData.state.canonical_progress===initialTotal,'Sauvegarde répétée et retour en arrière sans doubler ni perdre la progression');
+ok((await content('presentation')).body.position.percentage===10,'Position de reprise distincte de la progression acquise');
+await call('progress','POST',{contentId:'presentation',position:60,percentage:60});
+statsData=await (await statsReq()).json();
+ok(Math.abs(statsData.daily.reduce((n,r)=>n+r.gain,0)-initialGain*1.5)<.00001,'Seules les nouvelles pages ajoutent un gain quotidien');
+const beforeResetTotal=statsData.state.canonical_progress;
+let goalNow=await call('goals','POST',{work_id:'disparus',start_mode:'CURRENT',target_date:Date.now()+14*86400000});
+ok(goalNow.status===200&&goalNow.body.start_progress===beforeResetTotal&&(await content('presentation')).body.position.percentage===60,'Activation au niveau actuel conserve la position et prend cet avancement comme point de départ');
+const historyBefore=JSON.stringify(statsData.daily);
+const otherBefore=sqlite.prepare('SELECT * FROM user_progress WHERE user_id=?').all('reader');
+let goalZero=await call('goals','POST',{work_id:'disparus',start_mode:'ZERO',target_date:Date.now()+14*86400000});
+statsData=await (await statsReq()).json();
+ok(goalZero.status===200&&goalZero.body.start_progress===0&&statsData.state.canonical_progress===0&&(await content('presentation')).body.position.percentage===0,'Recommencer remet réellement la position et le niveau du livre à zéro');
+ok(JSON.stringify(statsData.daily)===historyBefore&&JSON.stringify(sqlite.prepare('SELECT * FROM user_progress WHERE user_id=?').all('reader'))===JSON.stringify(otherBefore),'Remise à zéro conserve l’historique et les autres comptes');
+ok((await call('goals','POST',{work_id:'disparus',start_mode:'INVALID',target_date:Date.now()+86400000})).status===400,'Départ de rythme invalide refusé');
+who('statistics-other');await call('me');statsData=await (await statsReq()).json();ok(!statsData.daily.length&&statsData.state.canonical_progress===0,'Statistiques personnelles isolées entre lecteurs');
+who(null);ok((await statsReq()).status===401,'Statistiques de compte inaccessibles anonymement');
+const visit={visitor_id:crypto.randomUUID(),session_id:crypto.randomUUID(),view_id:crypto.randomUUID(),format:'TEXT'};
+ok((await call('activity','POST',visit)).status===200,'Visite publique enregistrée sans compte');
+await call('activity','POST',visit);let visitRow=sqlite.prepare('SELECT * FROM platform_visits WHERE id=?').get(visit.session_id);
+ok(visitRow.views===1,'Présence périodique sans multiplier les pages vues');
+await call('activity','POST',{...visit,view_id:crypto.randomUUID()});visitRow=sqlite.prepare('SELECT * FROM platform_visits WHERE id=?').get(visit.session_id);ok(visitRow.views===2,'Nouvelle page comptée dans la même visite');
+who('statistics-other');await call('activity','POST',{...visit,view_id:crypto.randomUUID()});ok(sqlite.prepare('SELECT views FROM platform_visits WHERE id=?').get(visit.session_id).views===2,'Une autre identité ne peut modifier la session d’un visiteur');
+ok((await call('admin/activity')).status===403,'Fréquentation réservée à l’administration');
+who('admin');const traffic=await call('admin/activity');ok(traffic.status===200&&traffic.body.online===1&&traffic.body.windows[0].views===2,'Indicateurs administrateur : présence récente et fréquentation mesurées');
+who(null);ok((await call('activity','POST',visit,'https://intrus.example')).status===403,'Collecte de fréquentation protégée contre les écritures intersites');
+console.log(count+' contrôles réussis au total pour la version 9.');

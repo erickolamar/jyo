@@ -1,4 +1,5 @@
 import {admin,db,bucket,route,json,sameOrigin,body,str,integer,HttpError,choice} from '@/lib/server';
+import {platformStats} from '@/lib/activity';
 import {PDFDocument} from 'pdf-lib';
 export async function GET(){return route(async()=>{await admin();const [sources,goals,grants,stats,funnel]=await Promise.all([
  db().prepare('SELECT id,work_id,original_filename,page_count,version,analysis,created_at FROM source_files ORDER BY created_at DESC').all(),
@@ -6,7 +7,7 @@ export async function GET(){return route(async()=>{await admin();const [sources,
  db().prepare('SELECT e.*,u.email,w.title FROM entitlements e JOIN users u ON u.id=e.user_id LEFT JOIN works w ON w.id=e.work_id ORDER BY e.created_at DESC LIMIT 100').all(),
  db().prepare('SELECT event,COUNT(*) AS total FROM analytics_events GROUP BY event').all(),
  db().prepare("SELECT w.id,w.title,(SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE work_id=w.id AND event='work_started') AS started,(SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE work_id=w.id AND event='work_completed') AS completed,(SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE work_id=w.id AND event='paywall_viewed') AS paywall,(SELECT COUNT(*) FROM shares WHERE work_id=w.id) AS shares FROM works w").all()
- ]);return json({sources:sources.results,goals:goals.results,grants:grants.results,stats:stats.results,funnel:funnel.results});});}
+ ]);return json({activity:await platformStats(),sources:sources.results,goals:goals.results,grants:grants.results,stats:stats.results,funnel:funnel.results});});}
 export async function POST(req:Request){return route(async()=>{sameOrigin(req);await admin();const b=await body(req);const now=Date.now();
  if(b.action==='source'){
   const work=await db().prepare('SELECT id FROM works WHERE id=?').bind(str(b.work_id,80)).first();const asset=await db().prepare("SELECT * FROM assets WHERE id=? AND mime='application/pdf'").bind(str(b.asset_id,100)).first<any>();if(!work||!asset)throw new HttpError(400,'Œuvre ou PDF introuvable.');
