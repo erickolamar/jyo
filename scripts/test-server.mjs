@@ -153,3 +153,29 @@ const {pdfReadingGroups}=await import(pathToFileURL(resolve(root,'lib/pdf-paragr
 const lineBlocks=[{id:'a',type:'text',x:20,y:20,width:100,height:12,align:'left',runs:[{text:'Texte en',size:10}]},{id:'b',type:'text',x:122,y:20,width:50,height:12,align:'left',runs:[{text:'gras',bold:true,size:10}]},{id:'c',type:'text',x:20,y:34,width:140,height:12,align:'left',runs:[{text:'sur deux lignes.',size:10}]}];
 const groups=pdfReadingGroups(lineBlocks);ok(groups.length===1&&groups[0].length===3&&groups[0][1].runs[0].bold&&groups[0][2].id==='c','Fragments PDF regroupés en paragraphes sans perdre styles ni ancres de surlignage');
 console.log(count+' contrôles réussis au total pour la version 7.');
+
+// Version 8: page-limited access, interludes and reading-time estimates.
+who('admin');
+const limited=(await call('admin/library','POST',{action:'chapter',work_id:simple.id,title:'Premières pages offertes',document:longBook,characters_per_page:300,access_type:'PREVIEW',free_pages:1})).body;
+const divider=(await call('admin/library','POST',{action:'chapter',work_id:simple.id,title:'Deuxième partie',document:plainBook('Deuxième partie'),section_kind:'PART'})).body;
+ok(divider.section_kind==='PART'&&sqlite.prepare('SELECT section_kind FROM contents WHERE id=?').get(divider.id).section_kind==='PART','Interchapitre enregistré dans la continuité du livre');
+ok((await call('admin/library','POST',{action:'publish',work_id:simple.id})).status===200,'Publication de pages gratuites sans imposer un second extrait');
+who(null);const limitedInfo=await(await readerRequest('reader/[id]',limited.id)).json();
+ok(limitedInfo.document.pages.length===1&&limitedInfo.total_pages>1&&limitedInfo.accessible_fraction<1,'Le serveur ne transmet que le nombre de pages gratuites');
+ok(!JSON.stringify(limitedInfo).includes('Paragraphe 12'),'Les pages réservées ne sont pas cachées en CSS : elles sont absentes de la réponse');
+ok((await content(first.id)).body.chapters.find(c=>c.id===limited.id).accessible,'Le sommaire ouvre le début gratuit du chapitre');
+ok((await readerRequest('download/[id]',limited.id)).status===403,'Aucun téléchargement complet par le début gratuit');
+who('other');sqlite.prepare('DELETE FROM subscriptions WHERE user_id=?').run('other');sqlite.prepare('DELETE FROM entitlements WHERE user_id=?').run('other');
+ok((await call('progress','POST',{contentId:limited.id,position:0,percentage:100})).status===403,'Progression au-delà des pages offertes rejetée');
+ok((await call('progress','POST',{contentId:limited.id,position:0,percentage:limitedInfo.accessible_fraction*100})).status===200,'Progression des pages offertes sauvegardée sans compter la suite');
+who('admin');await call('admin/library','POST',{action:'chapter',id:mixed.id,work_id:simple.id,document:rich,access_type:'PREVIEW',free_pages:2,pdf_download:true});
+who(null);const pdfLimited=await(await readerRequest('reader/[id]',mixed.id)).json();
+ok(pdfLimited.document.pages.length===2&&!JSON.stringify(pdfLimited).includes('SECRET PAGE PREMIUM'),'Le PDF est lui aussi limité côté serveur aux pages gratuites');
+who('reader');sqlite.prepare('INSERT INTO subscriptions(user_id,ends_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET ends_at=excluded.ends_at').run('reader',Date.now()+86400000);
+ok((await(await readerRequest('reader/[id]',mixed.id)).json()).document.pages.length===5,'L’Abonné retrouve toutes les pages du même chapitre');
+const {readingSeconds,paceCanValidate,sessionReport}=await import(pathToFileURL(resolve(root,'lib/reading-pace.ts')).href);
+ok(readingSeconds('Un titre')===3&&readingSeconds('mot '.repeat(220))===60,'Temps estimé selon le texte avec un minimum pour les pages courtes');
+ok(!paceCanValidate(2,60,true)&&!paceCanValidate(60,60,false)&&paceCanValidate(60,60,true),'Un balayage rapide ou une page non terminée ne valide pas la lecture');
+const report=sessionReport(.05,.1,{start_progress:0,start_date:0,target_date:100*86400000},8*86400000);
+ok(Math.abs(report.gain-5)<.001&&Math.abs(report.progress-10)<.001&&Math.abs(report.gap-2)<.001,'Bilan : gain de cinq points, dix pour cent lus et deux points d’avance');
+console.log(count+' contrôles réussis au total pour la version 8.');
