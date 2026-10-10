@@ -4,12 +4,13 @@ import {readingDocument} from './book-server';
 import {blockText} from './book-model';
 export const shareOrigin='https://arcanum-recits.clark-banaken.chatgpt.site';
 export const normalizedQuote=(text:string)=>text.replace(/\s+/g,' ').trim();
-export async function allowedQuoteText(c:any){
- if(c.share_text)return normalizedQuote(c.share_text);
- if(c.access_type!=='FREE')return '';
- const rich=await readingDocument(c);
- return normalizedQuote(rich.document?rich.document.pages.flatMap(p=>p.blocks.map(blockText)).join(' '):c.text_content||'');
+export async function publicQuoteText(c:any){
+ if(c.access_type==='PREVIEW'&&!c.free_pages)return normalizedQuote(c.preview_text||'');
+ if(c.access_type!=='FREE'&&!(c.access_type==='PREVIEW'&&c.free_pages>0))return '';
+ const rich=await readingDocument(c,c.access_type!=='FREE');
+ return normalizedQuote(rich.document?rich.document.pages.flatMap(p=>p.blocks.map(blockText)).join(' '):c.access_type==='FREE'?c.text_content||'':c.preview_text||'');
 }
+export async function allowedQuoteText(c:any){return c.share_text?normalizedQuote(c.share_text):publicQuoteText(c)}
 export async function publicFragment(slug:string){
  const s=await db().prepare('SELECT * FROM shares WHERE public_slug=? AND (expires_at IS NULL OR expires_at>?)').bind(slug,Date.now()).first<any>();
  if(!s)throw new HttpError(404,'Ce fragment n’est plus disponible.');
@@ -21,6 +22,6 @@ export async function publicFragment(slug:string){
   if(!(await allowedQuoteText(full)).includes(normalizedQuote(s.text_content)))throw new HttpError(404,'Ce passage n’est plus partagé.');
  }
  const first=contents.find(c=>c.work_id===work.id&&c.access_type==='FREE');
- const direct=!!c&&c.access_type==='FREE'&&s.share_type==='TEXT_FRAGMENT';
+ const direct=!!c&&s.share_type==='TEXT_FRAGMENT'&&(c.access_type==='FREE'||c.access_type==='PREVIEW'&&!!c.free_pages&&(await publicQuoteText(await db().prepare('SELECT * FROM contents WHERE id=?').bind(c.id).first())).includes(normalizedQuote(s.text_content)));
  return {record:s,work,share:{share_type:s.share_type,text:s.text_content,content_id:s.content_id,mediaAvailable:!!s.media_key},direct_read:direct,start_url:direct?contentUrl(c)+'?fragment='+encodeURIComponent(slug):c?'/paywall/'+c.id:first?contentUrl(first):'/work/'+work.slug};
 }

@@ -17,4 +17,4 @@ export async function body(req:Request){if(Number(req.headers.get('content-lengt
 export function str(v:unknown,max=1000){return typeof v==='string'?v.trim().slice(0,max):'';}
 export function integer(v:unknown,min=0,max=1_000_000){const n=Number(v);if(!Number.isInteger(n)||n<min||n>max)throw new HttpError(400,'Nombre invalide.');return n;}
 export function choice(v:unknown,allowed:string[]){if(typeof v!=='string'||!allowed.includes(v))throw new HttpError(400,'Choix invalide.');return v;}
-export function returnPath(v:unknown){const p=str(v,400);return /^\/(lire|ecouter|regarder|read|listen|watch)\/[a-zA-Z0-9-]+$/.test(p)?p:'/library';}
+export function returnPath(v:unknown){const p=str(v,400);return /^\/(lire|ecouter|regarder|read|listen|watch|j)\/[a-zA-Z0-9-]+$/.test(p)?p:'/library';}

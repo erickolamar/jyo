@@ -1,6 +1,6 @@
 import {route,json,identity,sameOrigin,body,db,str,choice,HttpError} from '@/lib/server';
 import {accessibleContent,can_access,snapshot,track} from '@/lib/jyo';
-import {allowedQuoteText,normalizedQuote} from '@/lib/shared-fragment';
+import {allowedQuoteText,normalizedQuote,publicQuoteText} from '@/lib/shared-fragment';
 export async function POST(req:Request){return route(async()=>{
  sameOrigin(req);const u=await identity(),b=await body(req),type=choice(b.share_type,['TEXT_FRAGMENT','AUDIO_FRAGMENT','VIDEO_FRAGMENT','WORK_SHARE','PROGRESS_SHARE']);
  if(!u&&type!=='TEXT_FRAGMENT')throw new HttpError(401,'Connectez-vous pour continuer.');
@@ -9,7 +9,8 @@ export async function POST(req:Request){return route(async()=>{
  if(type==='PROGRESS_SHARE')text=`J’ai avancé à ${Math.round((data.states.find(s=>s.work_id===work.id)?.canonical_progress||0)*100)} % dans ${work.title}.`;
  if(type.endsWith('_FRAGMENT')){
   const c=await accessibleContent(str(b.content_id,80));
-  if(c.work_id!==work.id||!await can_access(u?.userId,c)||!c.sharing_allowed)throw new HttpError(403,'Le partage d’extraits doit être activé par l’auteur dans Administration → Partage.');
+  const freeSelection=type==='TEXT_FRAGMENT'&&normalizedQuote(typeof b.text==='string'?b.text:'').length>=3&&(await publicQuoteText(c)).includes(normalizedQuote(b.text));
+  if(c.work_id!==work.id||(!await can_access(u?.userId,c)&&!freeSelection)||!c.sharing_allowed)throw new HttpError(403,'Le partage d’extraits doit être activé par l’auteur dans Mes œuvres → Partage.');
   contentId=c.id;
   if(type==='TEXT_FRAGMENT'){
    text=normalizedQuote(typeof b.text==='string'?b.text:'');const allowed=await allowedQuoteText(c);

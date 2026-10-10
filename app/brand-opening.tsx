@@ -1,0 +1,1 @@
+export default function BrandOpening(){return <div className="brand-opening" role="status"><img src="/jyo-opening.jpg" alt="JYO — Ici, on va plus loin…"/><span>Ouverture de votre lecture…</span></div>}
