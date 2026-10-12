@@ -261,3 +261,39 @@ who(null);ok((await call('reviews','POST',{work_id:'disparus',rating:5,text:'Ano
 const restrictedCard=await routes['shares/[slug]/card'].GET(new Request('http://localhost:5173?theme=cream'),{params:Promise.resolve({slug:maxShare.body.slug})});ok(restrictedCard.status===403,'Personnalisation avancée réservée à l’avantage configuré');who('v11-premium');await editorial.putSetting('membership:v11-premium',{plan:'PREMIUM',until:Date.now()+86400000});
 for(const font of ['serif','sans','mono']){const res=await routes['shares/[slug]/card'].GET(new Request('http://localhost:5173?format=square&font='+font+'&theme=cream&align=center&background=gradient'),{params:Promise.resolve({slug:maxShare.body.slug})});ok(res.status===200&&res.headers.get('Content-Type')==='image/png','Partage personnalisé rendu avec la police '+font)}
 console.log(count+' contrôles réussis pour la version 11.');
+// V12: preserve existing documents, owner checks, revision safety, editing and dates.
+who('v11-premium');
+const dates=await import('../lib/publication-date.ts');
+ok(dates.publicationLabel('2026-10-12','fr-FR').includes('2026')&&dates.publicationLabel('2026-10-12','en-US').includes('Oct'),'Date localisée en français et en anglais');
+ok(dates.publicationLabel(null)===''&&dates.publicationLabel('2026-02-30')==='','Dates absentes et invalides masquées sans interrompre le livre');
+const p12=await call('personal','POST',{title:'Brouillon privé',author:'Moi',status:'draft',document:personalDoc});ok(p12.status===200&&p12.body.cover_color&&p12.body.publication_date&&p12.body.revision===1,'Brouillon avec couleur stable, date par défaut et révision');
+let edited12=await call('personal','POST',{...p12.body,title:'Titre modifié',publication_date:'2020-02-29',document:personalDoc});ok(edited12.status===200&&edited12.body.revision===2&&edited12.body.cover_color===p12.body.cover_color,'Modification des métadonnées sans changer la couverture');
+ok((await call('personal','POST',{...p12.body,title:'Écrasement ancien',document:personalDoc})).status===409,'Ancienne révision refusée sans écraser les pages');
+const req12=(id,extra='')=>routes.personal.GET(new Request('http://localhost:5173/api/personal?id='+id+extra));
+let read12=await(await req12(p12.body.id)).json();ok(read12.title==='Titre modifié'&&read12.document.pages[0].blocks[0].runs[0].text.includes('confidentiel'),'Les pages et la bonne révision sont conservées après conflit');
+ok((await call('personal','POST',{...edited12.body,publication_date:'2026-02-30',document:personalDoc})).status===400,'Date privée invalide refusée');
+ok((await call('personal','POST',{title:' ',document:personalDoc})).status===400,'Titre vide refusé');
+await call('personal','POST',{action:'position',id:p12.body.id,position:{percentage:37},annotations:[{id:'mark12',kind:'favorite'}]});
+let save12=await call('personal','POST',{...edited12.body,title:'Nouveau titre',document:personalDoc});ok(save12.status===200&&save12.body.position.percentage===37&&save12.body.annotations.length===1,'La sauvegarde des pages ne perd ni progression ni annotations');
+const metadata12=await(await req12(p12.body.id,'&meta=1')).json();ok(!metadata12.document&&metadata12.revision===3,'Revalidation légère du cache sans retransmettre les pages');
+who('v11-buyer');ok((await call('personal','POST',{action:'delete',id:p12.body.id,revision:3})).status===404,'Suppression par un autre propriétaire impossible');
+who('v11-premium');let removed12=await call('personal','POST',{action:'delete',id:p12.body.id,revision:3});ok(removed12.status===200&&(await req12(p12.body.id)).status===404,'Livre supprimé inaccessible par lien direct');ok(!(await call('personal')).body.documents.some(d=>d.id===p12.body.id),'Livre supprimé absent de la bibliothèque');
+let restore12=await call('personal','POST',{action:'restore',id:p12.body.id,revision:removed12.body.revision});ok(restore12.status===200&&(await req12(p12.body.id)).status===200,'Restauration depuis la corbeille sans perte de contenu');
+await editorial.putSetting('membership:v11-premium',{plan:'PREMIUM',until:Date.now()-1});ok((await req12(p12.body.id)).status===200&&(await call('personal','POST',{...restore12.body,document:personalDoc})).status===403,'Après expiration : lecture conservée, édition désactivée');
+await editorial.putSetting('membership:v11-premium',{plan:'PREMIUM',until:Date.now()+86400000});
+const edits=await import('../lib/book-editing.ts'),model12=await import('../lib/book-model.ts');const rich12={version:1,origin:'TEXT',pages:[{number:1,width:600,height:840,margin:42,blocks:[{id:'a12',type:'text',runs:[{text:'Premier paragraphe',bold:true,italic:true,underline:true,color:'#aa0011',size:28}]},{id:'b12',type:'text',runs:[{text:'Suite'}]}]},{number:2,width:600,height:840,blocks:[]}]};
+let moved12=edits.moveBlock(rich12,'a12',1);ok(moved12.pages[1].blocks[0].runs[0].underline&&moved12.pages[0].blocks.length===1,'Déplacement de bloc conserve mise en forme et identité');
+ok(edits.reorderPage(moved12,1,0).pages[0].blocks[0].id==='a12','Réorganisation des pages conserve les blocs');
+let broken12=edits.breakAfter(rich12,0,0);ok(broken12.pages.length===3&&broken12.pages[1].blocks[0].id==='b12','Saut de page déplace uniquement les blocs suivants');
+const long12={...rich12.pages[0].blocks[0],runs:[{text:'texte '.repeat(900),bold:true,underline:true}]};const split12=edits.splitBlock(long12);ok(split12.length===3&&split12.every(b=>b.runs.every(r=>r.bold&&r.underline))&&split12.flatMap(b=>b.runs).map(r=>r.text).join('')===long12.runs[0].text,'Division longue sans perte de texte ou de mise en forme');
+let valid12=model12.validateBook(rich12);ok(valid12.pages[0].margin===42&&valid12.pages[0].blocks[0].runs[0].underline,'Le format du lecteur conserve marges et souligné');
+const after12=await call('jyo');ok(!JSON.stringify(after12.body).includes('Nouveau titre'),'Livres privés absents de la découverte');
+console.log(count+' contrôles réussis pour la version 12.');
+
+who('admin');ok((await call('admin','POST',{action:'editorial',work_id:'disparus',publication_date:'2026-02-30'})).status===400,'Date éditoriale invalide signalée sans erreur serveur');
+const originalPrepare12=DB.prepare;let queries12=0;DB.prepare=function(...args){queries12++;return originalPrepare12.apply(this,args)};
+const benchmark12=Array.from({length:50},(_,i)=>({id:'performance-'+i,title:'Livre '+i}));
+const start12=performance.now();const decorated12=await editorial.decorateWorks(benchmark12);const elapsed12=performance.now()-start12;DB.prepare=originalPrepare12;
+ok(queries12===3&&decorated12.length===50,'Catalogue de 50 œuvres : 3 requêtes au lieu de 101 avant optimisation');
+console.log('Mesure locale SQLite en mémoire : '+elapsed12.toFixed(2)+' ms pour décorer 50 œuvres. Ce temps ne représente pas la latence réseau.');
+console.log(count+' contrôles réussis pour la version 12 finale.');

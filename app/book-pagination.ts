@@ -26,7 +26,7 @@ export function logicalPages(doc:BookDocument,maxChars=1800):Leaf[]{
  return pages.length?pages:[{sourcePage:1,blocks:[]}];
 }
 export function cutRuns(runs:Run[],start:number,end:number){let pos=0;return runs.flatMap(r=>{const a=Math.max(0,start-pos),b=Math.min(r.text.length,end-pos);pos+=r.text.length;return b>a?[{...r,text:r.text.slice(a,b)}]:[]})}
-export function runStyle(r:Run,font:number,family:string,base=20){return {fontWeight:r.bold?'700':'400',fontStyle:r.italic?'italic':'normal',fontFamily:familyName(family==='author'?r.family:family),fontSize:`${font?Math.max(10,(r.size||base)/base*font):r.size||20}px`,color:r.color||'#202020'};}
+export function runStyle(r:Run,font:number,family:string,base=20){return {fontWeight:r.bold?'700':'400',fontStyle:r.italic?'italic':'normal',textDecoration:r.underline?'underline':'none',fontFamily:familyName(family==='author'?r.family:family),fontSize:`${font?Math.max(10,(r.size||base)/base*font):r.size||20}px`,color:r.color||'#202020'};}
 export function paginate(doc:BookDocument,width:number,height:number,font:number,family:string,maxChars:number):Leaf[]{
  if(doc.origin==='PDF'&&!font&&family==='author')return doc.pages.map(p=>({sourcePage:p.number,blocks:p.blocks.map(b=>({...b,offset:0,sourcePage:p.number})),fixed:true,original:p}));
  const root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'-100000px',top:'0',width:width+'px',fontSize:(font||20)+'px',lineHeight:'1.65',visibility:'hidden',overflowWrap:'break-word',whiteSpace:'pre-wrap'});document.body.appendChild(root);const result:Leaf[]=[];

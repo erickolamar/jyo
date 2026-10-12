@@ -4,6 +4,7 @@ import "./pdf-reader.css";
 import "./jyo.css";
 import "./book-reader.css";
 import "./editorial.css";
+import "./private-books.css";
 
 export const metadata: Metadata = {
   title: "JYO — Ici, on va plus loin...",
