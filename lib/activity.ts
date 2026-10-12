@@ -5,7 +5,7 @@ export async function platformStats(){
  const now=Date.now(),today=Date.parse(activityDay(now)+'T00:00:00+01:00');
  const [online,subscribers,windows,formats]=await Promise.all([
   db().prepare('SELECT COUNT(DISTINCT actor) AS n FROM platform_visits WHERE last_seen>?').bind(now-300000).first<any>(),
-  db().prepare("SELECT COUNT(*) AS n FROM (SELECT user_id FROM subscriptions WHERE ends_at>? UNION SELECT substr(key,12) AS user_id FROM settings WHERE key LIKE 'membership:%' AND json_valid(value) AND json_extract(value,'$.until')>?)").bind(now,now).first<any>(),
+  db().prepare("SELECT COUNT(*) AS n FROM (SELECT user_id FROM subscriptions WHERE ends_at>? UNION SELECT substr(key,12) AS user_id FROM settings WHERE key LIKE 'membership:%' AND json_valid(value) AND json_extract(value,'$.until')>? UNION SELECT json_extract(value,'$.user_id') AS user_id FROM settings WHERE key LIKE 'membership-gift:%' AND json_valid(value) AND json_extract(value,'$.until')>? AND json_extract(value,'$.revoked_at') IS NULL)").bind(now,now,now).first<any>(),
   Promise.all([today,today-6*86400000,today-29*86400000].map(since=>db().prepare('SELECT COUNT(*) AS visits,COUNT(DISTINCT actor) AS visitors,COALESCE(SUM(views),0) AS views FROM platform_visits WHERE started_at>=?').bind(since).first<any>())),
   db().prepare("SELECT COALESCE(format,'OTHER') AS format,COUNT(*) AS visits FROM platform_visits WHERE started_at>=? GROUP BY format").bind(today-29*86400000).all<any>()
  ]);return {online:online.n,subscribers:subscribers.n,windows,formats:formats.results,updated_at:now};
