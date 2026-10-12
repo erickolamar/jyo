@@ -4,7 +4,7 @@ import {BookOpen,Headphones,Play} from 'lucide-react';
 import {api,type Row} from './ui';
 import {readingKind,readerUrl,localRows} from './jyo-client';
 import ReadingDialog from './reading-dialog';
-export function FormatBadge({format}:{format:string}){const Icon=format==='AUDIO'?Headphones:format==='VIDEO'?Play:BookOpen;return <span className="format-badge"><Icon size={15}/>{format==='AUDIO'?'Audio':format==='VIDEO'?'Vidéo':'Lecture'}</span>}
+export function FormatBadge({format}:{format:string}){const Icon=format==='AUDIO'?Headphones:format==='VIDEO'?Play:BookOpen;return <span className={"format-badge format-"+format.toLowerCase()}><Icon size={15}/>{format==='AUDIO'?'Audio':format==='VIDEO'?'Vidéo':'Lecture'}</span>}
 export function currentPlace(content:Row|undefined,position:Row|undefined){if(!content)return '';const base=content.title;if(!position)return base;if(['AUDIO','VIDEO'].includes(content.format)){const n=Math.floor(position.timestamp_seconds??position.position??0);return base+' · '+Math.floor(n/60)+':'+String(n%60).padStart(2,'0')}let automatic:Row={};try{automatic=typeof position.automatic_position==='string'?JSON.parse(position.automatic_position):position.automatic_position||position}catch{}return base+' · Page '+(automatic.page_index!=null?automatic.page_index+1:position.page_number||1)}
 export function ResumeCard({work,state,contents,progress,onDetails,compact=false}:{work:Row;state:Row;contents:Row[];progress:Row[];onDetails?:()=>void;compact?:boolean}){
  const rows=progress.filter(p=>contents.some(c=>c.id===p.content_id)).sort((a,b)=>b.updated_at-a.updated_at),last=rows[0],c=contents.find(c=>c.id===state.action?.content_id)||contents.find(c=>c.id===last?.content_id)||contents[0],position=rows.find(p=>p.content_id===c?.id);

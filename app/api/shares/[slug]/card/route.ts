@@ -1,17 +1,19 @@
+import {shareFont} from '@/lib/share-fonts';
 import {createElement as h} from 'react';
 import {ImageResponse} from 'next/og';
 import {publicFragment,shareOrigin} from '@/lib/shared-fragment';
-import {route} from '@/lib/server';
+import {hasFeature} from '@/lib/editorial';
+import {route,bucket,identity,HttpError} from '@/lib/server';
 export async function GET(req:Request,{params}:{params:Promise<{slug:string}>}){return route(async()=>{
  const slug=(await params).slug,{share,work}=await publicFragment(slug);
  const story=new URL(req.url).searchParams.get('format')==='story',width=1080,height=story?1920:1080;
- const quote=share.text||work.title;
- const image=new ImageResponse(h('div',{style:{width:'100%',height:'100%',display:'flex',flexDirection:'column',background:'#080a0f',padding:story?'110px 86px':'62px 72px',color:'#f7f1e5',border:'2px solid #c5a86a'}},
- h('div',{style:{display:'flex',flexDirection:'column',paddingBottom:36,borderBottom:'1px solid #665331'}},h('div',{style:{fontSize:story?100:70,fontWeight:700,letterSpacing:10,color:'#c5a86a'}},'JYO'),h('div',{style:{fontSize:28,marginTop:12,color:'#e1d4ba'}},'Ici, on va plus loin…')),
- h('div',{style:{display:'flex',flex:1,alignItems:'center',fontSize:story?(quote.length>300?46:58):(quote.length>300?34:44),lineHeight:1.45,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},'« '+quote+' »'),
- h('div',{style:{display:'flex',flexDirection:'column',fontSize:26,borderTop:'1px solid #665331',paddingTop:30}},h('div',{style:{color:'#c5a86a',fontWeight:700}},work.title),h('div',{style:{fontSize:23,marginTop:12}},work.author)),
- h('div',{style:{fontSize:22,marginTop:30,color:'#c5a86a'}},'Lire la suite sur JYO'),
- h('div',{style:{fontSize:18,marginTop:12,color:'#b7b5b0',overflowWrap:'anywhere'}},shareOrigin.replace('https://','')+'/j/'+slug)),{width,height,headers:{'Cache-Control':'private, no-store'}});
+ const quote=share.text||work.title,q=new URL(req.url).searchParams;const defaults:Record<string,string>={theme:'night',font:'serif',size:'normal',align:'left',spacing:'normal',design:'editorial',background:'solid'};if(Object.entries(defaults).some(([k,v])=>q.has(k)&&q.get(k)!==v)){const u=await identity();if(!u||!await hasFeature(u.userId,'sharing'))throw new HttpError(403,'La personnalisation avancée est incluse dans Premium.');}const theme=({cream:['#f6edda','#292119','#866027'],wine:['#301923','#fff1e6','#e1b48d'],forest:['#102c26','#f4f0de','#d1be7e']} as Record<string,string[]>)[q.get('theme')||'']||['#080f1b','#f7f1e5','#e6be76'];const family=q.get('font')==='sans'?'sans-serif':q.get('font')==='mono'?'monospace':'serif',align=['left','center','right'].includes(q.get('align')||'')?q.get('align')!:'left';const scale=q.get('size')==='small'?.86:q.get('size')==='large'?1.12:1;const design=q.get('design');let cover='';if(q.get('background')==='cover'&&/^\/api\/covers\/[a-zA-Z0-9-]+$/.test(work.cover||'')){const obj=await bucket().get(work.cover.split('/').pop());if(obj&&obj.size<4000000){const bytes=new Uint8Array(await obj.arrayBuffer());let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);cover='data:'+(obj.httpMetadata?.contentType||'image/jpeg')+';base64,'+btoa(binary)}}
+ const image=new ImageResponse(h('div',{style:{width:'100%',height:'100%',display:'flex',flexDirection:'column',background:theme[0],...(cover?{backgroundImage:`linear-gradient(${theme[0]}ee,${theme[0]}ee),url(${cover})`,backgroundSize:'cover'}:q.get('background')==='gradient'?{backgroundImage:`linear-gradient(145deg,${theme[0]},#314456)`}:{}),padding:story?'110px 86px':'62px 72px',color:theme[1],fontFamily:'JyoShare',border:'2px solid #c5a86a'}},
+ h('div',{style:{display:'flex',flexDirection:'column',paddingBottom:36,borderBottom:'1px solid #665331'}},h('div',{style:{fontSize:story?100:70,fontWeight:700,letterSpacing:10,color:theme[2]}},'JYO'),h('div',{style:{fontSize:28,marginTop:12,color:theme[1]}},'Ici, on va plus loin…')),
+ h('div',{style:{display:'flex',flex:1,alignItems:'center',fontStyle:design==='elegant'?'italic':'normal',textAlign:align as any,justifyContent:align==='center'?'center':align==='right'?'flex-end':'flex-start',fontSize:Math.round((story?(quote.length>300?46:58):(quote.length>300?32:42))*scale),lineHeight:q.get('spacing')==='compact'?1.25:q.get('spacing')==='airy'?1.6:1.45,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},design==='minimal'?quote:design==='book'?'— '+quote:'« '+quote+' »'),
+ h('div',{style:{display:'flex',flexDirection:'column',fontSize:26,borderTop:'1px solid #665331',paddingTop:30}},h('div',{style:{color:theme[2],fontWeight:700}},work.title),h('div',{style:{fontSize:23,marginTop:12}},work.author)),
+ h('div',{style:{fontSize:22,marginTop:30,color:theme[2]}},'Lire la suite sur JYO'),
+ h('div',{style:{fontSize:18,marginTop:12,color:theme[1],overflowWrap:'anywhere'}},shareOrigin.replace('https://','')+'/j/'+slug)),{width,height,fonts:[{name:'JyoShare',data:shareFont(q.get('font')||'serif'),style:'normal',weight:400}],headers:{'Cache-Control':'private, no-store'}});
  // Consume here so rendering failures are handled by route(), not a broken response stream.
  return new Response(await image.arrayBuffer(),{headers:{'Content-Type':'image/png','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 });}
