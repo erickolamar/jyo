@@ -1,2 +1,3 @@
 import Jyo from '../jyo-ui';
-export default function Page(){return <Jyo/>;}
+import MiniPubFallback from '../mini-pub-fallback';
+export default async function Page({params}:{params:Promise<{path:string[]}>}){const {path}=await params;return <>{['discover','explorer'].includes(path.join('/'))&&<MiniPubFallback/>}<Jyo/></>;}

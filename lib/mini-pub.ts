@@ -1,0 +1,3 @@
+import {db,visible} from './server';import {setting} from './editorial';import {miniPubDefaults,miniPubItems} from './mini-pub-model';
+export async function miniPubConfig(){return {...miniPubDefaults,...await setting('editorial:mini-pub',{})}}
+export async function miniPub(works?:any[]){const config=await miniPubConfig();if(!works){const [rows,metadata]=await Promise.all([db().prepare(`SELECT id,title,author,description,synopsis,cover,status,publish_at,created_at FROM works WHERE ${visible}`).bind(Date.now()).all<any>(),setting('editorial:works')]);works=rows.results.map(w=>({...w,...metadata[w.id]}))}return {enabled:config.enabled,retractable:config.retractable,seconds:config.seconds,items:config.enabled?miniPubItems(works!,config):[]}}

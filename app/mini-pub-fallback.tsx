@@ -1,0 +1,1 @@
+export default function MiniPubFallback(){return <noscript><style>{'.brand-opening{display:none!important}.mini-pub-static{display:block;width:100%;height:285px;border:0;max-width:1180px;margin:20px auto}'}</style><iframe className="mini-pub-static" src="/api/mini-pub/static" title="Nouveautés JYO — bandeau statique"/></noscript>}
