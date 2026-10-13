@@ -17,3 +17,5 @@ export * from './jyo-schema';
 export * from './reader-schema';
 
 export * from './activity-schema';
+
+export * from './reading-time-schema';
