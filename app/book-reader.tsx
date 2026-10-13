@@ -2,6 +2,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {Check,Settings,ChevronLeft,ChevronRight,X,Bookmark,Search,Maximize,Download,Star,Share2} from 'lucide-react';
 import BookEntrance from './book-motion';
+import {usePageTurn} from './page-turn';
 import ReadingDialog from './reading-dialog';
 import {readingSeconds,paceCanValidate} from '../lib/reading-pace';
 import {pdfReadingGroups} from '../lib/pdf-paragraphs';
@@ -31,8 +32,7 @@ export default function BookReader({openingWork,privateBook=false,paceBlocked=fa
   restoreTarget.current=a;setLeaves(pages);setIndex(Math.max(0,Math.min(pages.length-1,paceEnabled?Math.min(pos,Math.floor(validated.current/100*pages.length)):pos)));initialized.current=true;
  },[doc,logical,scrolling,innerWidth,innerHeight,font,family,characters,loaded,paceEnabled]);
  const current=leaves[index];
- const previousPage=useRef<number|null>(null);
- useLayoutEffect(()=>{if(!current)return;const before=previousPage.current;previousPage.current=index;if(before===null||before===index||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const el=stage.current?.querySelector<HTMLElement>('.book-spread');if(!el)return;const direction=index>before?1:-1;const motion=el.animate([{opacity:.7,transform:`perspective(1200px) translateX(${direction*20}px) rotateY(${direction*-2}deg)`,boxShadow:'inset 10px 0 25px -22px #d6ac57'},{opacity:1,transform:'perspective(1200px) translateX(0) rotateY(0)',boxShadow:'inset 0 0 0 transparent'}],{duration:280,easing:'ease-out'});return()=>motion.cancel()},[index,current?.sourcePage]);
+ const animatePageTurn=usePageTurn(root,stage);
  function report(){
   const el=stage.current;if(!current||!el)return;const scroll=scrolling?clamp(el.scrollTop/Math.max(1,el.scrollHeight-el.clientHeight)):0;setRatio(scroll);
   const top=el.getBoundingClientRect().top+16,blocks=Array.from(el.querySelectorAll<HTMLElement>('[data-book-block]')),visible=blocks.find(b=>b.getBoundingClientRect().bottom>top),b=current.blocks.find(b=>b.id===visible?.dataset.bookBlock)||current.blocks.find(b=>b.type==='text');
@@ -56,7 +56,7 @@ export default function BookReader({openingWork,privateBook=false,paceBlocked=fa
  useEffect(()=>{const timer=setInterval(()=>tick.current(),1000);return()=>clearInterval(timer)},[]);
  function allowForward(target:number){if(!paceRef.current)return true;validateCurrent();if(target<=Math.floor(validated.current/100*leaves.length))return true;setTooFast(true);return false;}
  function endSession(){validateCurrent();report();if(onEndSession)onEndSession();else if(onClose)onClose();else location.assign(closeUrl)}
- function jump(i:number,a:Row={}){if(i>index&&!allowForward(i))return;const n=Math.max(0,Math.min(leaves.length-1,i));restoreTarget.current=a;if(n===index){restore(a);restoreTarget.current=null}else setIndex(n);setSettings(false);setPanel('');setSelection(null);setControls(false);setDone(false)}
+ function jump(i:number,a:Row={}){if(i>index&&!allowForward(i))return;const n=Math.max(0,Math.min(leaves.length-1,i));restoreTarget.current=a;if(n===index){restore(a);restoreTarget.current=null}else{animatePageTurn(n>index?1:-1);setIndex(n)};setSettings(false);setPanel('');setSelection(null);setControls(false);setDone(false)}
  function finishPage(){if(!allowForward(leaves.length))return;if(next&&!next.accessible){onFinish();setDone(true);setGate(next);hide();return}onFinish();if(!next||!onNavigate){setDone(true);setPanel('end');setControls(true)}}
  function turn(direction:number){if(direction>0&&!allowForward(index+(double?2:1)))return;if(window.getSelection()?.toString())return;const n=index+direction*(double?2:1);if(n>=leaves.length){finishPage();return}if(n<0&&previous){if(previous.accessible)onNavigate?.(previous.id,'end');else setGate(previous);return}jump(n,direction<0?{scroll_ratio:1}:{scroll_ratio:0})}
  function reveal(){setControls(true);clearTimeout(hideTimer.current);hideTimer.current=setTimeout(()=>setControls(false),3000)}
