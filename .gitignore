@@ -21,6 +21,16 @@
 # misc
 .DS_Store
 *.pem
+# Private keys and local credentials
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.ssh/
+.aws/
+credentials.json
+service-account*.json
 
 # debug
 npm-debug.log*
