@@ -354,3 +354,22 @@ ok((await call('goals')).body.goals[0].status==='EXPIRED'&&(await call('goals','
 ok((await call('reading-time')).body.daily.length>0&&(await call('reading-time','POST',{...manualTime,id:crypto.randomUUID()})).status===403,'Historique conservé après expiration de Premium');
 ok((await call('reading-time','POST',{action:'remove-manual',id:manualTime.id})).status===200,'Chacun peut supprimer sa propre saisie après expiration');
 console.log(count+' contrôles réussis — statistiques globales.');
+
+// Sharing UX: links must belong to the selected work, independently of membership.
+who('share-link-reader');await call('me');
+const publicWorks=sqlite.prepare("SELECT id FROM works WHERE status='PUBLISHED' LIMIT 2").all();
+ok(publicWorks.length===2,'Deux livres publiés disponibles pour le contrôle des liens');
+const workShareA=await call('shares','POST',{work_id:publicWorks[0].id,share_type:'WORK_SHARE'});
+const workShareB=await call('shares','POST',{work_id:publicWorks[1].id,share_type:'WORK_SHARE'});
+ok(workShareA.status===200&&workShareB.status===200&&workShareA.body.slug!==workShareB.body.slug,'Deux livres partagés produisent deux liens différents');
+const secondShare=await(await routes['shares/[slug]'].GET(new Request('http://localhost:5173'),{params:Promise.resolve({slug:workShareB.body.slug})})).json();
+ok(secondShare.work.id===publicWorks[1].id,'Le destinataire voit bien le livre sélectionné');
+ok((await call('shares','POST',{work_id:publicWorks[1].id,share_type:'WORK_SHARE'})).body.slug===workShareB.body.slug,'Partager à nouveau le même livre réutilise uniquement son propre lien');
+who(null);ok((await call('shares','POST',{work_id:publicWorks[0].id,share_type:'WORK_SHARE'})).status===200,'Partager la fiche publique ne nécessite aucun abonnement');
+ok((await call('shares','POST',{work_id:publicWorks[0].id,share_type:'PROGRESS_SHARE'})).status===401,'Le bilan personnel reste réservé au compte connecté');
+who('share-link-reader');await editorial.putSetting('membership:share-link-reader',{plan:'PREMIUM',until:Date.now()+86400000});
+const forbidden=await call('shares','POST',{work_id:'disparus',content_id:'presentation',share_type:'TEXT_FRAGMENT',text:'Passage non autorisé'});
+ok(forbidden.status===403&&forbidden.body.error.includes('auteur'),'Premium respecte l’autorisation de partage de l’auteur avec un message clair');
+const workCard=await routes['shares/[slug]/card'].GET(new Request('http://localhost:5173?format=story'),{params:Promise.resolve({slug:workShareB.body.slug})});
+ok(workCard.status===200&&workCard.headers.get('Content-Type')==='image/png','Le livre entier dispose aussi de sa carte de partage');
+console.log(count+' contrôles réussis — partage simplifié.');
