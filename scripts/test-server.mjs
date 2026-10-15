@@ -373,3 +373,20 @@ ok(forbidden.status===403&&forbidden.body.error.includes('auteur'),'Premium resp
 const workCard=await routes['shares/[slug]/card'].GET(new Request('http://localhost:5173?format=story'),{params:Promise.resolve({slug:workShareB.body.slug})});
 ok(workCard.status===200&&workCard.headers.get('Content-Type')==='image/png','Le livre entier dispose aussi de sa carte de partage');
 console.log(count+' contrôles réussis — partage simplifié.');
+
+const {passageBetween}=await import('../lib/reader-selection.ts');
+const selectionDoc={version:1,origin:'TEXT',pages:[{number:1,blocks:[{id:'a',type:'text',runs:[{text:'Bonjour le monde'}]}]},{number:2,blocks:[{id:'b',type:'text',runs:[{text:'La suite du livre'}]}]}]};
+const passage=passageBetween(selectionDoc,{block_id:'a',offset:8},{block_id:'b',offset:8});
+ok(passage.text==='le monde\nLa suite'&&passage.segments.length===2,'Sélection début-fin entre deux pages sans perdre le texte');
+ok(passageBetween(selectionDoc,{block_id:'b',offset:8},{block_id:'a',offset:8}).text===passage.text,'Sélection inversée ordonnée correctement');
+ok(passageBetween(selectionDoc,{block_id:'missing',offset:0},{block_id:'a',offset:3})===null,'Un repère extérieur au chapitre ne sélectionne rien');
+ok(passageBetween(selectionDoc,{block_id:'a',offset:3},{block_id:'a',offset:3})===null,'Sélection vide ignorée');
+const longSelection=passageBetween({pages:[{blocks:[{id:'long',type:'text',runs:[{text:'a'.repeat(12000)}]}]}]},{block_id:'long',offset:0},{block_id:'long',offset:12000});
+ok(longSelection.text.length===12000&&longSelection.segments.every(s=>s.end-s.start<=10000),'Long passage conservé intégralement dans les limites de sauvegarde');
+who('reader');
+const newMarks=[{...marks[0],kind:'note',note:'Une réflexion personnelle'},{...marks[0],id:'stop-1',kind:'stop'}];
+ok((await readerRequest('reader/[id]',parts[0].id,'POST',{annotations:newMarks})).status===200,'Notes et arrêt enregistrés');
+const restoredMarks=(await(await readerRequest('reader/[id]',parts[0].id)).json()).annotations;
+ok(restoredMarks[0].note==='Une réflexion personnelle'&&restoredMarks[1].kind==='stop','Note et barre d’arrêt conservées à la réouverture');
+who('other');ok((await(await readerRequest('reader/[id]',parts[0].id)).json()).annotations.length===0,'Les nouvelles notes restent privées');
+console.log(count+' contrôles réussis — sélection intelligente.');
