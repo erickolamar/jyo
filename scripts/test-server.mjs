@@ -454,3 +454,24 @@ ok(sqlite.prepare('SELECT SUM(gain) AS n FROM reading_daily WHERE user_id=?').ge
 who('round-other');const otherHistory=await routes['reading-rounds'].GET(new Request('http://localhost:5173/api/reading-rounds?work='+roundWork));ok((await otherHistory.json()).history.length===0,'L’historique des relectures reste isolé entre comptes');
 who(null);ok((await call('reading-rounds','POST',{work_id:roundWork,round:1})).status===401,'La relecture persistante exige un compte');
 console.log(count+' contrôles réussis — bibliothèque et relectures.');
+
+// Long-press gesture ownership: no accidental activation while scrolling.
+const {createSelectionGesture}=await import('../lib/selection-gesture.ts');
+let gestureNow=1000,timerId=0,timers=new Map(),heldPoints=[],draggedPoints=[],selectionActive=false,cancelledSelections=0;
+const gesture=createSelectionGesture({now:()=>gestureNow,schedule:(fn,ms)=>{const id=++timerId;timers.set(id,{fn,at:gestureNow+ms});return id},unschedule:id=>timers.delete(id),active:()=>selectionActive,hold:p=>{heldPoints.push(p);selectionActive=true},drag:p=>draggedPoints.push(p),cancelSelection:()=>{selectionActive=false;cancelledSelections++}});
+function advanceGesture(ms){gestureNow+=ms;for(const [id,t] of [...timers])if(t.at<=gestureNow){timers.delete(id);t.fn()}}
+gesture.down({x:20,y:20});advanceGesture(200);gesture.up({x:20,y:20});advanceGesture(500);
+ok(heldPoints.length===0,'Un simple appui ne démarre pas la sélection');
+gesture.down({x:20,y:20});advanceGesture(100);gesture.move({x:20,y:70});advanceGesture(700);gesture.up({x:20,y:70});
+ok(heldPoints.length===0,'Le défilement vertical ne déclenche pas de sélection');
+gesture.down({x:30,y:40});advanceGesture(550);
+ok(heldPoints.length===1&&selectionActive&&gesture.busy(),'L’appui long active directement la sélection sans menu');
+ok(gesture.move({x:170,y:110})&&draggedPoints.length===1,'Le maintien suivi d’un glissement étend la sélection');
+gesture.up({x:170,y:110});ok(gesture.busy(),'Le relâchement du glissement ne déclenche pas un clic de navigation');advanceGesture(700);
+gesture.down({x:230,y:160});advanceGesture(550);gesture.up({x:230,y:160});
+ok(heldPoints.length===2,'Un nouvel appui long permet d’ajuster la fin');advanceGesture(700);
+gesture.down({x:40,y:50});advanceGesture(50);gesture.up({x:40,y:50});advanceGesture(150);gesture.down({x:42,y:51});advanceGesture(50);gesture.up({x:42,y:51});
+ok(cancelledSelections===1&&!selectionActive&&gesture.busy(),'Le double appui annule le mode et empêche le changement de page involontaire');advanceGesture(700);
+gesture.down({x:40,y:50});advanceGesture(50);gesture.up({x:40,y:50});advanceGesture(150);gesture.down({x:42,y:51});advanceGesture(50);gesture.up({x:42,y:51});ok(cancelledSelections===1,'Le double appui hors sélection ne crée aucune sélection');
+gesture.down({x:40,y:50});gesture.cancel();advanceGesture(600);ok(heldPoints.length===2,'Une interruption tactile ou un pincement annule l’appui en attente');
+console.log(count+' contrôles réussis — gestes de sélection.');
