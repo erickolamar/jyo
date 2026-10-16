@@ -455,23 +455,30 @@ who('round-other');const otherHistory=await routes['reading-rounds'].GET(new Req
 who(null);ok((await call('reading-rounds','POST',{work_id:roundWork,round:1})).status===401,'La relecture persistante exige un compte');
 console.log(count+' contrôles réussis — bibliothèque et relectures.');
 
-// Long-press gesture ownership: no accidental activation while scrolling.
+// Two-step selection: invisible tap, then a hold begun within three seconds.
 const {createSelectionGesture}=await import('../lib/selection-gesture.ts');
 let gestureNow=1000,timerId=0,timers=new Map(),heldPoints=[],draggedPoints=[],selectionActive=false,cancelledSelections=0;
 const gesture=createSelectionGesture({now:()=>gestureNow,schedule:(fn,ms)=>{const id=++timerId;timers.set(id,{fn,at:gestureNow+ms});return id},unschedule:id=>timers.delete(id),active:()=>selectionActive,hold:p=>{heldPoints.push(p);selectionActive=true},drag:p=>draggedPoints.push(p),cancelSelection:()=>{selectionActive=false;cancelledSelections++}});
 function advanceGesture(ms){gestureNow+=ms;for(const [id,t] of [...timers])if(t.at<=gestureNow){timers.delete(id);t.fn()}}
-gesture.down({x:20,y:20});advanceGesture(200);gesture.up({x:20,y:20});advanceGesture(500);
-ok(heldPoints.length===0,'Un simple appui ne démarre pas la sélection');
-gesture.down({x:20,y:20});advanceGesture(100);gesture.move({x:20,y:70});advanceGesture(700);gesture.up({x:20,y:70});
-ok(heldPoints.length===0,'Le défilement vertical ne déclenche pas de sélection');
-gesture.down({x:30,y:40});advanceGesture(550);
-ok(heldPoints.length===1&&selectionActive&&gesture.busy(),'L’appui long active directement la sélection sans menu');
-ok(gesture.move({x:170,y:110})&&draggedPoints.length===1,'Le maintien suivi d’un glissement étend la sélection');
-gesture.up({x:170,y:110});ok(gesture.busy(),'Le relâchement du glissement ne déclenche pas un clic de navigation');advanceGesture(700);
+function tap(){gesture.down({x:20,y:20});advanceGesture(80);gesture.up({x:20,y:20})}
+gesture.down({x:20,y:20});advanceGesture(900);gesture.up({x:20,y:20});
+ok(heldPoints.length===0,'Un appui long sans tap préalable ne sélectionne rien');
+gesture.down({x:20,y:20});advanceGesture(600);gesture.up({x:20,y:20});
+ok(heldPoints.length===0,'Poser le doigt longtemps ne prépare pas la sélection suivante');
+tap();ok(!selectionActive&&gesture.busy(),'Le tap reste invisible et bloque les commandes de lecture');advanceGesture(3001);
+gesture.down({x:20,y:20});advanceGesture(550);gesture.up({x:20,y:20});
+ok(heldPoints.length===0,'L’armement expire automatiquement après trois secondes');
+tap();gesture.down({x:20,y:20});advanceGesture(100);gesture.move({x:20,y:70});advanceGesture(700);gesture.up({x:20,y:70});
+gesture.down({x:20,y:20});advanceGesture(550);gesture.up({x:20,y:20});
+ok(heldPoints.length===0,'Le défilement annule l’armement sans créer de sélection');
+tap();advanceGesture(2800);gesture.down({x:30,y:40});advanceGesture(550);
+ok(heldPoints.length===1&&selectionActive,'Tap puis appui long commencé dans les trois secondes pose le point A');
+gesture.move({x:32,y:42});ok(draggedPoints.length===0,'Un léger tremblement laisse seulement le point A visible');
+ok(gesture.move({x:170,y:110})&&draggedPoints.length===1,'Un vrai glissement étend la même sélection');
+gesture.up({x:170,y:110});ok(gesture.busy(),'Le relâchement ne tourne pas la page');advanceGesture(5000);
 gesture.down({x:230,y:160});advanceGesture(550);gesture.up({x:230,y:160});
-ok(heldPoints.length===2,'Un nouvel appui long permet d’ajuster la fin');advanceGesture(700);
-gesture.down({x:40,y:50});advanceGesture(50);gesture.up({x:40,y:50});advanceGesture(150);gesture.down({x:42,y:51});advanceGesture(50);gesture.up({x:42,y:51});
-ok(cancelledSelections===1&&!selectionActive&&gesture.busy(),'Le double appui annule le mode et empêche le changement de page involontaire');advanceGesture(700);
-gesture.down({x:40,y:50});advanceGesture(50);gesture.up({x:40,y:50});advanceGesture(150);gesture.down({x:42,y:51});advanceGesture(50);gesture.up({x:42,y:51});ok(cancelledSelections===1,'Le double appui hors sélection ne crée aucune sélection');
-gesture.down({x:40,y:50});gesture.cancel();advanceGesture(600);ok(heldPoints.length===2,'Une interruption tactile ou un pincement annule l’appui en attente');
-console.log(count+' contrôles réussis — gestes de sélection.');
+ok(heldPoints.length===2,'Après le point A, le point B reste disponible sans nouveau tap');advanceGesture(700);
+tap();advanceGesture(150);tap();ok(cancelledSelections===1&&!selectionActive,'Le double tap annule la sélection');advanceGesture(700);
+gesture.down({x:20,y:20});advanceGesture(550);gesture.up({x:20,y:20});ok(heldPoints.length===2,'L’annulation ne réarme pas la sélection');
+tap();gesture.cancel();gesture.down({x:40,y:50});advanceGesture(600);gesture.up({x:40,y:50});ok(heldPoints.length===2,'Un pincement annule aussi l’armement invisible');
+console.log(count+' contrôles réussis — sélection en deux temps.');
