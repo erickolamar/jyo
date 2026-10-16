@@ -1,10 +1,11 @@
+import {linkPhysicalEntries} from '@/lib/physical-books';
 import {db,route,json,identity,sameOrigin,body,str,integer,choice,HttpError} from '@/lib/server';
 import {timePremium,readingBook} from '@/lib/reading-time';
 import {readingDay,readingTotals,secondsAfter} from '@/lib/reading-time-model';
 
 export async function GET(req:Request){return route(async()=>{
  const u=(await identity(true))!,q=new URL(req.url).searchParams,tz=q.get('timezone')||'Africa/Douala';try{readingDay(Date.now(),tz)}catch{throw new HttpError(400,'Fuseau horaire invalide.')}
- if(q.get('status')==='1')return json({premium:await timePremium(u.userId),goal:await db().prepare('SELECT * FROM reading_commitments WHERE user_id=?').bind(u.userId).first()});
+ await linkPhysicalEntries(u.userId);if(q.get('status')==='1')return json({premium:await timePremium(u.userId),goal:await db().prepare('SELECT * FROM reading_commitments WHERE user_id=?').bind(u.userId).first()});
  const now=Date.now(),since=now-32*86400000,first=readingDay(since,tz),premium=await timePremium(u.userId);
  const [slots,manual,goal,badges]=await Promise.all([
   db().prepare('SELECT minute,book_key,title,format,mask FROM reading_time_slots WHERE user_id=? AND minute>=? ORDER BY minute').bind(u.userId,Math.floor(since/60000)).all<any>(),
@@ -35,7 +36,7 @@ export async function POST(req:Request){return route(async()=>{
   const id=str(b.id,80);if(!/^[a-f0-9-]{36}$/i.test(id))throw new HttpError(400,'Identifiant invalide.');const day=str(b.day,10),seconds=integer(b.minutes,1,1440)*60;if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day+'T12:00:00Z'))||new Date(day+'T12:00:00Z').toISOString().slice(0,10)!==day||day>readingDay(now,'Pacific/Kiritimati')||day<readingDay(now-366*86400000))throw new HttpError(400,'Date de lecture invalide.');
   const key=str(b.book_key,100),title=key?await readingBook(u.userId,key):str(b.title,180)||'Lecture hors application',format=choice(b.format||'TEXT',['TEXT','AUDIO','VIDEO']);
   const prior=await db().prepare('SELECT id FROM reading_time_manual WHERE user_id=? AND id=?').bind(u.userId,id).first();if(prior)return json({ok:true});
-  const result=await db().prepare('INSERT OR IGNORE INTO reading_time_manual(user_id,id,day,seconds,book_key,title,format,created_at) SELECT ?,?,?,?,?,?,?,? WHERE COALESCE((SELECT SUM(seconds) FROM reading_time_manual WHERE user_id=? AND day=?),0)+?<=86400').bind(u.userId,id,day,seconds,key,title,format,now,u.userId,day,seconds).run();if(!result.meta.changes)throw new HttpError(400,'Le cumul saisi dépasse 24 heures pour cette journée.');return json({ok:true});
+  const result=await db().prepare('INSERT OR IGNORE INTO reading_time_manual(user_id,id,day,seconds,book_key,title,format,created_at) SELECT ?,?,?,?,?,?,?,? WHERE COALESCE((SELECT SUM(seconds) FROM reading_time_manual WHERE user_id=? AND day=?),0)+?<=86400').bind(u.userId,id,day,seconds,key,title,format,now,u.userId,day,seconds).run();if(!result.meta.changes)throw new HttpError(400,'Le cumul saisi dépasse 24 heures pour cette journée.');await linkPhysicalEntries(u.userId);if(key.startsWith('private:'))await db().prepare("UPDATE settings SET value=json_set(value,'$.started_at',COALESCE(json_extract(value,'$.started_at'),?)) WHERE key=? AND json_extract(value,'$.source_type')='physical'").bind(now,'personal:'+u.userId+':'+key.slice(8)).run();return json({ok:true});
  }
  if(b.action==='commitment'){
   const minutes=integer(b.minutes,5,10080),period=choice(b.period,['DAY','WEEK']);if(period==='DAY'&&minutes>1440)throw new HttpError(400,'Maximum 24 heures par jour.');const status=choice(b.status||'ACTIVE',['ACTIVE','PAUSED','STOPPED']);

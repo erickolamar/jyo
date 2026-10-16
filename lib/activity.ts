@@ -1,6 +1,7 @@
+import {roundGuard,roundKey} from './reading-rounds';
 import {db} from './server';
 export function activityDay(now=Date.now()) {return new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Douala',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);}
-export function dailyProgressStatement(userId:string,c:any,ranged:any,pct:number,now:number){return db().prepare('INSERT INTO reading_daily(user_id,work_id,day,format,gain,updated_at) SELECT ?,?,?,?,MAX(0,?-COALESCE((SELECT MAX(furthest_percentage,percentage) FROM user_progress WHERE user_id=? AND content_id=?),0))*?,? WHERE TRUE ON CONFLICT(user_id,work_id,day,format) DO UPDATE SET gain=reading_daily.gain+excluded.gain,updated_at=excluded.updated_at').bind(userId,c.work_id,activityDay(now),['TEXT','PDF'].includes(c.format)?'TEXT':c.format,pct,userId,c.id,ranged.canonical_end-ranged.canonical_start,now);}
+export function dailyProgressStatement(userId:string,c:any,ranged:any,pct:number,now:number,round=1){return db().prepare('INSERT INTO reading_daily(user_id,work_id,day,format,gain,updated_at) SELECT ?,?,?,?,MAX(0,?-COALESCE((SELECT MAX(furthest_percentage,percentage) FROM user_progress WHERE user_id=? AND content_id=?),0))*?,? WHERE '+roundGuard+' ON CONFLICT(user_id,work_id,day,format) DO UPDATE SET gain=reading_daily.gain+excluded.gain,updated_at=excluded.updated_at').bind(userId,c.work_id,activityDay(now),['TEXT','PDF'].includes(c.format)?'TEXT':c.format,pct,userId,c.id,ranged.canonical_end-ranged.canonical_start,now,roundKey(userId,c.work_id),round);}
 export async function platformStats(){
  const now=Date.now(),today=Date.parse(activityDay(now)+'T00:00:00+01:00');
  const [online,subscribers,windows,formats]=await Promise.all([

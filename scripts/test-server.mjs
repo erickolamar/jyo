@@ -13,7 +13,7 @@ const DB={prepare(sql){let args=[];const p={bind(...a){args=a;return p},async fi
 const files=new Map();const BUCKET={async put(key,buffer,opts){files.set(key,{buffer:typeof buffer==='string'?new TextEncoder().encode(buffer):new Uint8Array(buffer),type:opts.httpMetadata.contentType})},async delete(k){files.delete(k)},async get(k){const f=files.get(k);return f?{body:f.buffer,async json(){return JSON.parse(new TextDecoder().decode(f.buffer))},async arrayBuffer(){return f.buffer.slice().buffer},size:f.buffer.length,httpEtag:'test',writeHttpMetadata(h){h.set('Content-Type',f.type)}}:null}};
 globalThis.testEnv={DB,BUCKET,ADMIN_EMAIL:'admin@example.com'};globalThis.testHeaders=new Headers();
 registerHooks({resolve(specifier,context,next){if(specifier==='next/og')return next('@vercel/og',context);if(specifier==='cloudflare:workers')return {url:'test:workers',shortCircuit:true};if(specifier==='next/headers')return {url:'test:headers',shortCircuit:true};if(specifier==='next/navigation')return {url:'test:navigation',shortCircuit:true};if(specifier.startsWith('@/'))return {url:pathToFileURL(resolve(root,specifier.slice(2)+'.ts')).href,shortCircuit:true};if(specifier.startsWith('.')&&context.parentURL?.endsWith('.ts')){const url=new URL(specifier,context.parentURL);if(existsSync(fileURLToPath(url)+'.ts'))return {url:url.href+'.ts',shortCircuit:true}}return next(specifier,context)},load(url,context,next){if(url==='test:workers')return {format:'module',source:'export const env=globalThis.testEnv',shortCircuit:true};if(url==='test:headers')return {format:'module',source:'export const headers=async()=>globalThis.testHeaders',shortCircuit:true};if(url==='test:navigation')return {format:'module',source:'export function redirect(p){throw new Error(p)}',shortCircuit:true};if(url.endsWith('.ts'))return {format:'module',source:ts.transpileModule(readFileSync(fileURLToPath(url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText,shortCircuit:true};return next(url,context)}});
-const routes={};for(const name of ['reading-time','admin/mini-pub','mini-pub','mini-pub/static','admin/gifts','personal','reviews','activity','reading-stats','admin/activity','catalog','me','admin','progress','payments','upload','content/[id]','media/[id]','jyo','admin/jyo','admin/source/[id]','goals','shares','shares/[slug]','offline','reminders','admin/reader','admin/library','covers/[id]','reader/[id]','download/[id]','admin/reader-pdf/[id]','shares/[slug]/card'])routes[name]=await import(pathToFileURL(resolve(root,'app/api',name,'route.ts')).href);
+const routes={};for(const name of ['reading-rounds','reading-time','admin/mini-pub','mini-pub','mini-pub/static','admin/gifts','personal','reviews','activity','reading-stats','admin/activity','catalog','me','admin','progress','payments','upload','content/[id]','media/[id]','jyo','admin/jyo','admin/source/[id]','goals','shares','shares/[slug]','offline','reminders','admin/reader','admin/library','covers/[id]','reader/[id]','download/[id]','admin/reader-pdf/[id]','shares/[slug]/card'])routes[name]=await import(pathToFileURL(resolve(root,'app/api',name,'route.ts')).href);
 let count=0;function ok(condition,message){assert.ok(condition,message);count++;console.log('PASS '+message)}
 function who(id,email=id+'@example.com'){globalThis.testHeaders=id?new Headers({'oai-authenticated-user-id':id,'oai-authenticated-user-email':email}):new Headers()}
 async function call(name,method='GET',data,origin='http://localhost:5173'){const request=new Request('http://localhost:5173/api/'+name,{method,headers:{'Content-Type':'application/json',Origin:origin},...(data?{body:JSON.stringify(data)}:{})});const response=await routes[name][method](request);return {status:response.status,body:await response.json()}}
@@ -390,3 +390,67 @@ const restoredMarks=(await(await readerRequest('reader/[id]',parts[0].id)).json(
 ok(restoredMarks[0].note==='Une réflexion personnelle'&&restoredMarks[1].kind==='stop','Note et barre d’arrêt conservées à la réouverture');
 who('other');ok((await(await readerRequest('reader/[id]',parts[0].id)).json()).annotations.length===0,'Les nouvelles notes restent privées');
 console.log(count+' contrôles réussis — sélection intelligente.');
+
+// Library summaries, physical books and separate reading rounds.
+const {librarySummary}=await import('../lib/library-summary.ts');
+ok(librarySummary([100,0,50]).average===50&&librarySummary([100,0,50]).completedPercent===33&&librarySummary([]).average===0,'Statistiques des étagères incluent les livres non commencés sans division par zéro');
+who('round-reader');await call('me');await editorial.putSetting('membership:round-reader',{plan:'PREMIUM',until:Date.now()+86400000});
+const outside={action:'manual',id:crypto.randomUUID(),day:tm.readingDay(Date.now()),minutes:20,title:'Mon livre papier',format:'TEXT'};
+ok((await call('reading-time','POST',outside)).status===200,'Une lecture papier peut être ajoutée depuis le suivi du temps');
+let paper=(await call('personal')).body.documents.find(d=>d.title===outside.title);
+ok(paper?.source_type==='physical'&&paper.position.percentage===0&&paper.status==='ready','Le livre physique rejoint automatiquement la bibliothèque sans progression inventée');
+await call('reading-time','POST',outside);await call('personal');
+ok((await call('personal')).body.documents.filter(d=>d.title===outside.title).length===1,'Le rattachement des heures est idempotent');
+ok(sqlite.prepare('SELECT book_key FROM reading_time_manual WHERE user_id=? AND id=?').get('round-reader',outside.id).book_key==='private:'+paper.id,'Les heures existantes sont liées au livre physique');
+ok((await routes.personal.GET(new Request('http://localhost:5173/api/personal?id='+paper.id))).status===200,'Un livre physique s’ouvre sans document PDF ni objet de stockage');
+let updatePaper=await call('personal','POST',{action:'physical-progress',id:paper.id,revision:paper.revision,mode:'pages',current_page:50,page_count:100});paper=updatePaper.body;
+ok(updatePaper.status===200&&paper.position.percentage===50,'La page atteinte convertit correctement la progression du livre physique');
+ok((await call('personal','POST',{action:'reread',id:paper.id,revision:paper.revision})).status===409,'Une relecture ne peut démarrer avant la fin');
+paper=(await call('personal','POST',{action:'physical-progress',id:paper.id,revision:paper.revision,mode:'percent',percentage:100})).body;
+const firstRevision=paper.revision;
+paper=(await call('personal','POST',{action:'reread',id:paper.id,revision:paper.revision})).body;
+ok(paper.reading_round===2&&!paper.position&&paper.reading_history[0].round===1&&paper.furthest_percentage===0,'La deuxième lecture repart à zéro et archive la première');
+ok((await call('personal','POST',{action:'reread',id:paper.id,revision:firstRevision})).status===409,'Un double clic ne crée pas une troisième lecture');
+ok((await call('personal','POST',{action:'position',id:paper.id,position:{percentage:100}})).status===409,'Une ancienne sauvegarde ne restaure pas la première lecture privée');
+ok((await call('personal','POST',{action:'physical-progress',id:paper.id,revision:paper.revision,reading_round:2,mode:'pages',current_page:101,page_count:100})).status===400,'Le suivi refuse une page supérieure au nombre total');
+let roundTime=(await call('reading-time')).body;
+ok(roundTime.daily.reduce((n,d)=>n+d.manual,0)===1200,'La relecture conserve exactement les heures déjà saisies');
+who('round-other');await call('me');ok((await routes.personal.GET(new Request('http://localhost:5173/api/personal?id='+paper.id))).status===404,'Le suivi du livre physique reste privé');
+who('round-reader');
+const digital=(await call('personal','POST',{title:'Mon PDF à relire',document:personalDoc})).body;
+await call('personal','POST',{action:'position',id:digital.id,position:{percentage:100},annotations:[{id:'kept',kind:'favorite'}]});
+const digitalAgain=await call('personal','POST',{action:'reread',id:digital.id,revision:digital.revision});
+ok(digitalAgain.status===200&&digitalAgain.body.annotations[0].id==='kept'&&(await routes.personal.GET(new Request('http://localhost:5173/api/personal?id='+digital.id))).status===200,'Relecture numérique conserve pages et annotations');
+const pubData=(await call('jyo')).body,roundWork=pubData.works[0].id,roundContents=pubData.contents.filter(c=>c.work_id===roundWork);
+ok((await call('reading-rounds','POST',{work_id:roundWork,round:1})).status===409,'Une œuvre JYO non terminée ne peut pas être remise à zéro par Relire');
+sqlite.prepare('INSERT INTO subscriptions(user_id,ends_at) VALUES(?,?)').run('round-reader',Date.now()+86400000);
+for(const c of roundContents){const finished=await call('progress','POST',{contentId:c.id,position:100,percentage:100});assert.equal(finished.status,200,JSON.stringify(finished.body));}
+const gainBefore=sqlite.prepare('SELECT SUM(gain) AS n FROM reading_daily WHERE user_id=?').get('round-reader').n;
+const reread=await call('reading-rounds','POST',{work_id:roundWork,round:1});
+ok(reread.status===200&&reread.body.round===2&&reread.body.return_to.startsWith('/'),'Une œuvre terminée démarre sa deuxième lecture');
+const roundState=(await call('jyo')).body.states.find(s=>s.work_id===roundWork);
+ok(roundState.reading_round===2&&roundState.started&&roundState.canonical_progress===0,'Le livre réapparaît dans En cours à zéro pour sa deuxième lecture');
+ok((await content(roundContents[0].id)).body.reading_round===2,'Le lecteur reçoit la génération de lecture actuelle');
+ok((await call('reading-rounds','POST',{work_id:roundWork,round:1})).status===409,'Deux demandes identiques de relecture ne doublent pas le compteur');
+ok((await call('progress','POST',{contentId:roundContents[0].id,position:100,percentage:100})).status===409,'Les anciennes positions publiques sont refusées après une relecture');
+ok(sqlite.prepare('SELECT SUM(gain) AS n FROM reading_daily WHERE user_id=?').get('round-reader').n===gainBefore,'La remise à zéro ne supprime ni ne duplique l’historique journalier');
+const oldHistory=JSON.parse(sqlite.prepare('SELECT value FROM settings WHERE key=?').get('reading-history:round-reader:'+roundWork+':1').value);
+ok(oldHistory.progress.length===roundContents.length&&oldHistory.progress.every(p=>p.percentage===100),'La première lecture complète est archivée avant réinitialisation');
+ok((await call('progress','POST',{contentId:roundContents[0].id,position:20,percentage:20,reading_round:2})).status===200,'La progression de la nouvelle lecture est acceptée');
+for(const c of roundContents)await call('progress','POST',{contentId:c.id,position:100,percentage:100,reading_round:2});
+const third=await call('reading-rounds','POST',{work_id:roundWork,round:2});
+ok(third.status===200&&third.body.round===3,'Une troisième lecture peut commencer après la deuxième, sans écraser la première');
+const historyCount=sqlite.prepare("SELECT COUNT(*) AS n FROM settings WHERE key LIKE ?").get('reading-history:round-reader:'+roundWork+':%').n;
+ok(historyCount===2,'Chaque lecture terminée dispose de sa propre archive');
+sqlite.prepare('UPDATE contents SET download_allowed=1 WHERE id=?').run(roundContents[0].id);
+const roundOffline=await call('offline','POST',{content_id:roundContents[0].id});
+ok(roundOffline.status===200&&JSON.parse(roundOffline.body.payload).reading_round===3,'Le téléchargement hors connexion porte la génération de la nouvelle lecture');
+// Simulate a reset after the request read the generation, before its write transaction.
+const batchBefore=DB.batch;
+DB.batch=async statements=>{DB.batch=batchBefore;await editorial.putSetting('reading-round:round-reader:'+roundWork,{round:4});return batchBefore(statements)};
+const gainsBeforeRace=sqlite.prepare('SELECT SUM(gain) AS n FROM reading_daily WHERE user_id=?').get('round-reader').n;
+ok((await call('progress','POST',{contentId:roundContents[0].id,position:80,percentage:80,reading_round:3})).status===409,'La garde transactionnelle bloque aussi une sauvegarde arrivée pendant le changement de lecture');
+ok(sqlite.prepare('SELECT SUM(gain) AS n FROM reading_daily WHERE user_id=?').get('round-reader').n===gainsBeforeRace,'Une sauvegarde concurrente rejetée n’ajoute aucun gain journalier');
+who('round-other');const otherHistory=await routes['reading-rounds'].GET(new Request('http://localhost:5173/api/reading-rounds?work='+roundWork));ok((await otherHistory.json()).history.length===0,'L’historique des relectures reste isolé entre comptes');
+who(null);ok((await call('reading-rounds','POST',{work_id:roundWork,round:1})).status===401,'La relecture persistante exige un compte');
+console.log(count+' contrôles réussis — bibliothèque et relectures.');
