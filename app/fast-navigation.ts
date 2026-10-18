@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 
-const supported=(path:string)=>['/','/discover','/library','/community','/profile'].includes(path)||/^\/work\/[^/]+$/.test(path);
+const supported=(path:string)=>['/','/discover','/library','/community','/profile','/gifts'].includes(path)||/^\/work\/[^/]+$/.test(path);
 // Keep catalogue views inside their existing React tree. Authentication,
 // payments, the editor and reader exits retain their normal navigation guards.
 export function useFastNavigation(initial:string){

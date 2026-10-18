@@ -1,6 +1,7 @@
 import {db,HttpError} from './server';
 import {membership,setting} from './editorial';
-export async function timePremium(user:string){return (await membership(user)).plan==='PREMIUM'}
+import {isAdministrator} from './server';
+export async function timePremium(user:string){return await isAdministrator(user)||(await membership(user)).plan==='PREMIUM'}
 export async function legacyGoal(user:string,work:string){return db().prepare("SELECT g.*,l.until AS legacy_until FROM user_goals g JOIN reading_legacy_goals l ON l.id=g.id WHERE g.user_id=? AND g.work_id=? AND l.until>? AND g.status IN ('ACTIVE','PAUSED')").bind(user,work,Date.now()).first<any>()}
 export async function readingBook(user:string,key:string){
  if(key.startsWith('private:')){const id=key.slice(8),book=await setting('personal:'+user+':'+id,null);if(book?.status==='ready')return book.title}

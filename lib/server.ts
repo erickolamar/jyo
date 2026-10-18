@@ -8,6 +8,7 @@ export class HttpError extends Error{constructor(public status:number,message:st
 export function config(key:string){return (env as unknown as Record<string,string>)[key] || process.env[key] || '';}
 export async function identity(required=false){const u=await getChatGPTUser();if(required&&!u)throw new HttpError(401,'Connectez-vous pour continuer.');if(u)await db().prepare('INSERT INTO users (id,email,name,created_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email,name=excluded.name').bind(u.userId,u.email,u.displayName,Date.now()).run();return u;}
 export async function admin(){const u=await identity(true);if(!config('ADMIN_EMAIL')||u!.email.toLowerCase()!==config('ADMIN_EMAIL').toLowerCase())throw new HttpError(403,'Accès réservé à l’administration.');return u!;}
+export async function isAdministrator(userId?:string){if(!userId||!config('ADMIN_EMAIL'))return false;return !!await db().prepare('SELECT id FROM users WHERE id=? AND lower(email)=lower(?)').bind(userId,config('ADMIN_EMAIL')).first();}
 export async function isSubscribed(userId?:string){if(!userId)return false;const r=await db().prepare('SELECT ends_at FROM subscriptions WHERE user_id=?').bind(userId).first<{ends_at:number}>();return !!r&&r.ends_at>Date.now();}
 export function sameOrigin(req:Request){const origin=req.headers.get('origin');if(!origin||origin!==new URL(req.url).origin)throw new HttpError(403,'Origine de la requête refusée.');}
 export const visible="(status='PUBLISHED' OR (status='SCHEDULED' AND publish_at IS NOT NULL AND publish_at <= ?))";

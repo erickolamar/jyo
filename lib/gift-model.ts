@@ -13,6 +13,9 @@ export const thankMessages = {
  Court: 'Merci pour le cadeau 🎁 Je viens de l’activer sur JYO !',
 };
 export const DAY = 86400000;
+export type GiftContext = 'book'|'jyo'|'admin'|'catalogue';
+export const giftTypesFor=(context:GiftContext,admin:boolean)=>context==='book'?['WORK']:context==='jyo'?(admin?['SUBSCRIPTION','JYO_DAYS']:['SUBSCRIPTION']):admin?['WORK','SUBSCRIPTION','JYO_DAYS']:['WORK','SUBSCRIPTION'];
+export const giftLabel=(g:any,workTitle?:string)=>g.gift_type==='SUBSCRIPTION'?'Abonnement '+(g.plan_name||({CLASSIC:'Classique',PREMIUM:'Premium'} as any)[g.plan]||'JYO')+' · '+g.days+' jours':g.gift_type==='WORK'?(workTitle||'Cette œuvre complète'):g.days+' jours JYO';
 export const giftStatus = (g:{status:string;expires_at?:number|null;sent_at?:number|null}, now=Date.now()) =>
  g.status==='UNCLAIMED'&&g.expires_at&&g.expires_at<=now?'EXPIRED':g.status;
 export const giftStatusLabel = (g:any) => ({CLAIMED:'Activé',REVOKED:'Révoqué',EXPIRED:'Expiré',UNCLAIMED:g.sent_at?'Envoyé':'Non utilisé'}[giftStatus(g)]||g.status);
